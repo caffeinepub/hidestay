@@ -40,6 +40,26 @@ export interface HotelQueryParams {
   'maxPrice' : [] | [bigint],
   'minPrice' : [] | [bigint],
 }
+export interface PropertyListing {
+  'id' : bigint,
+  'ownerEmail' : string,
+  'status' : PropertyListingStatus,
+  'hotelName' : string,
+  'ownerName' : string,
+  'city' : string,
+  'pricePerNight' : bigint,
+  'subscriptionPlan' : string,
+  'ownerPhone' : string,
+  'submittedAt' : bigint,
+  'submittedBy' : Principal,
+  'description' : string,
+  'amenities' : Array<string>,
+  'address' : string,
+  'roomType' : string,
+}
+export type PropertyListingStatus = { 'Approved' : null } |
+  { 'Rejected' : null } |
+  { 'PendingApproval' : null };
 export type Status = { 'Confirmed' : null } |
   { 'Cancelled' : null } |
   { 'Pending' : null };
@@ -53,6 +73,7 @@ export type UserRole = { 'admin' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'approvePropertyListing' : ActorMethod<[bigint], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'cancelBooking' : ActorMethod<[bigint], undefined>,
   'createBooking' : ActorMethod<
@@ -64,10 +85,30 @@ export interface _SERVICE {
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getHotel' : ActorMethod<[bigint], Hotel>,
+  'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
+  'getPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'rejectPropertyListing' : ActorMethod<[bigint], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'searchHotels' : ActorMethod<[HotelQueryParams], Array<Hotel>>,
+  'submitPropertyListing' : ActorMethod<
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      bigint,
+      string,
+      Array<string>,
+      string,
+      string,
+      bigint,
+    ],
+    bigint
+  >,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

@@ -47,6 +47,28 @@ export const Hotel = IDL.Record({
   'address' : IDL.Text,
   'imageIndex' : IDL.Nat,
 });
+export const PropertyListingStatus = IDL.Variant({
+  'Approved' : IDL.Null,
+  'Rejected' : IDL.Null,
+  'PendingApproval' : IDL.Null,
+});
+export const PropertyListing = IDL.Record({
+  'id' : IDL.Nat,
+  'ownerEmail' : IDL.Text,
+  'status' : PropertyListingStatus,
+  'hotelName' : IDL.Text,
+  'ownerName' : IDL.Text,
+  'city' : IDL.Text,
+  'pricePerNight' : IDL.Int,
+  'subscriptionPlan' : IDL.Text,
+  'ownerPhone' : IDL.Text,
+  'submittedAt' : IDL.Int,
+  'submittedBy' : IDL.Principal,
+  'description' : IDL.Text,
+  'amenities' : IDL.Vec(IDL.Text),
+  'address' : IDL.Text,
+  'roomType' : IDL.Text,
+});
 export const HotelQueryParams = IDL.Record({
   'city' : IDL.Opt(IDL.Text),
   'amenities' : IDL.Opt(IDL.Vec(IDL.Text)),
@@ -56,6 +78,7 @@ export const HotelQueryParams = IDL.Record({
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'cancelBooking' : IDL.Func([IDL.Nat], [], []),
   'createBooking' : IDL.Func(
@@ -77,14 +100,35 @@ export const idlService = IDL.Service({
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+  'getMyPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
+  'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'rejectPropertyListing' : IDL.Func([IDL.Nat], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'searchHotels' : IDL.Func([HotelQueryParams], [IDL.Vec(Hotel)], ['query']),
+  'submitPropertyListing' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Int,
+        IDL.Text,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+        IDL.Text,
+        IDL.Int,
+      ],
+      [IDL.Nat],
+      [],
+    ),
 });
 
 export const idlInitArgs = [];
@@ -129,6 +173,28 @@ export const idlFactory = ({ IDL }) => {
     'address' : IDL.Text,
     'imageIndex' : IDL.Nat,
   });
+  const PropertyListingStatus = IDL.Variant({
+    'Approved' : IDL.Null,
+    'Rejected' : IDL.Null,
+    'PendingApproval' : IDL.Null,
+  });
+  const PropertyListing = IDL.Record({
+    'id' : IDL.Nat,
+    'ownerEmail' : IDL.Text,
+    'status' : PropertyListingStatus,
+    'hotelName' : IDL.Text,
+    'ownerName' : IDL.Text,
+    'city' : IDL.Text,
+    'pricePerNight' : IDL.Int,
+    'subscriptionPlan' : IDL.Text,
+    'ownerPhone' : IDL.Text,
+    'submittedAt' : IDL.Int,
+    'submittedBy' : IDL.Principal,
+    'description' : IDL.Text,
+    'amenities' : IDL.Vec(IDL.Text),
+    'address' : IDL.Text,
+    'roomType' : IDL.Text,
+  });
   const HotelQueryParams = IDL.Record({
     'city' : IDL.Opt(IDL.Text),
     'amenities' : IDL.Opt(IDL.Vec(IDL.Text)),
@@ -138,6 +204,7 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'cancelBooking' : IDL.Func([IDL.Nat], [], []),
     'createBooking' : IDL.Func(
@@ -159,14 +226,39 @@ export const idlFactory = ({ IDL }) => {
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+    'getMyPropertyListings' : IDL.Func(
+        [],
+        [IDL.Vec(PropertyListing)],
+        ['query'],
+      ),
+    'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'rejectPropertyListing' : IDL.Func([IDL.Nat], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'searchHotels' : IDL.Func([HotelQueryParams], [IDL.Vec(Hotel)], ['query']),
+    'submitPropertyListing' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Int,
+          IDL.Text,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+          IDL.Text,
+          IDL.Int,
+        ],
+        [IDL.Nat],
+        [],
+      ),
   });
 };
 

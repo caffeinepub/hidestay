@@ -9,12 +9,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   BadgeCheck,
   Banknote,
   Building2,
@@ -35,6 +44,8 @@ import {
   Settings,
   SlidersHorizontal,
   Star,
+  ThumbsDown,
+  ThumbsUp,
   User,
   Users,
   Wifi,
@@ -45,7 +56,8 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import type { Booking, Hotel } from "./backend.d";
+import type { Booking, Hotel, PropertyListing } from "./backend.d";
+import { PropertyListingStatus } from "./backend.d";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Helpers
@@ -671,117 +683,598 @@ function BookingModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Subscription Modal
+// List Property Modal
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface SubscriptionModalProps {
+interface ListPropertyModalProps {
   open: boolean;
   onClose: () => void;
+  actor: import("./backend").backendInterface | null;
 }
 
-function SubscriptionModal({ open, onClose }: SubscriptionModalProps) {
+const AMENITY_OPTIONS = ["WiFi", "AC", "Parking"];
+const ROOM_TYPES = ["Standard", "Deluxe", "Suite"];
+
+function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
+  const { identity, login, isLoggingIn } = useInternetIdentity();
+  const isLoggedIn = !!identity;
+
+  const [submittedId, setSubmittedId] = useState<bigint | null>(null);
+
+  const [form, setForm] = useState({
+    hotelName: "",
+    city: "",
+    address: "",
+    pricePerNight: "",
+    roomType: "",
+    description: "",
+    amenities: [] as string[],
+    ownerName: "",
+    ownerPhone: "",
+    ownerEmail: "",
+    subscriptionPlan: "",
+  });
+
+  const updateField = (field: string, value: string) =>
+    setForm((prev) => ({ ...prev, [field]: value }));
+
+  const toggleAmenity = (amenity: string) =>
+    setForm((prev) => ({
+      ...prev,
+      amenities: prev.amenities.includes(amenity)
+        ? prev.amenities.filter((a) => a !== amenity)
+        : [...prev.amenities, amenity],
+    }));
+
+  const { mutate: submitListing, isPending } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      const id = await actor.submitPropertyListing(
+        form.ownerName,
+        form.ownerPhone,
+        form.ownerEmail,
+        form.hotelName,
+        form.city,
+        form.address,
+        BigInt(Math.round(Number(form.pricePerNight))),
+        form.roomType,
+        form.amenities,
+        form.description,
+        form.subscriptionPlan,
+        BigInt(Date.now()),
+      );
+      return id;
+    },
+    onSuccess: (id) => {
+      setSubmittedId(id);
+      toast.success("Property submitted for review!");
+    },
+    onError: () => {
+      toast.error("Submission failed. Please try again.");
+    },
+  });
+
+  const handleClose = () => {
+    onClose();
+    setSubmittedId(null);
+    setForm({
+      hotelName: "",
+      city: "",
+      address: "",
+      pricePerNight: "",
+      roomType: "",
+      description: "",
+      amenities: [],
+      ownerName: "",
+      ownerPhone: "",
+      ownerEmail: "",
+      subscriptionPlan: "",
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoggedIn) {
+      toast.error("Please log in to submit your property.");
+      return;
+    }
+    submitListing();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent
-        data-ocid="subscription.modal"
-        className="max-w-3xl w-full max-h-[90vh] overflow-y-auto rounded-2xl p-0 gap-0"
+        data-ocid="list_property.modal"
+        className="max-w-2xl w-full max-h-[92vh] overflow-y-auto p-0 gap-0 rounded-2xl shadow-modal"
       >
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-5 bg-brand text-white rounded-t-2xl">
+        <DialogHeader className="px-6 pt-6 pb-5 bg-brand text-white rounded-t-2xl sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-2xl font-display font-bold text-white">
-                List Your Property on HIDESTAY
+                List Your Property
               </DialogTitle>
               <p className="text-white/80 text-sm mt-1">
-                Choose a plan that fits your business. No hidden charges.
+                Submit your hotel for review — get listed on HIDESTAY.
               </p>
             </div>
             <button
               type="button"
-              onClick={onClose}
-              className="text-white/80 hover:text-white transition-colors rounded-full p-1 hover:bg-white/10"
+              data-ocid="list_property.close_button"
+              onClick={handleClose}
+              className="text-white/80 hover:text-white transition-colors rounded-full p-1.5 hover:bg-white/10"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </DialogHeader>
 
-        <div className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {SUBSCRIPTION_PLANS.map((plan) => (
+        <AnimatePresence mode="wait">
+          {submittedId !== null ? (
+            /* ── Success State */
+            <motion.div
+              data-ocid="list_property.success_state"
+              key="success"
+              initial={{ opacity: 0, scale: 0.93 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="px-6 py-10 text-center"
+            >
               <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: SUBSCRIPTION_PLANS.indexOf(plan) * 0.1 }}
-                className={`relative rounded-2xl border-2 ${plan.color} p-5 flex flex-col gap-4 ${plan.popular ? "shadow-lg" : ""}`}
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", delay: 0.1 }}
+                className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-5"
               >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-brand text-white text-xs font-bold px-3 py-1 rounded-full">
-                      Most Popular
-                    </span>
-                  </div>
+                <CheckCircle className="w-11 h-11 text-green-500" />
+              </motion.div>
+              <h3 className="text-2xl font-display font-bold text-foreground mb-2">
+                Application Submitted!
+              </h3>
+              <p className="text-muted-foreground text-sm mb-5 max-w-sm mx-auto">
+                Your property has been submitted for review.{" "}
+                <strong>Status: Pending Approval.</strong> Our team will contact
+                you within 24 hours.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 inline-flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="text-amber-700 text-sm font-semibold">
+                  Pending Approval
+                </span>
+              </div>
+              <div className="bg-muted rounded-xl px-4 py-3 mb-6">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-1">
+                  Submission ID
+                </p>
+                <p className="text-2xl font-display font-bold text-brand">
+                  #{submittedId.toString()}
+                </p>
+              </div>
+              <Button
+                data-ocid="list_property.done_button"
+                onClick={handleClose}
+                className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl py-5"
+              >
+                Close
+              </Button>
+            </motion.div>
+          ) : !isLoggedIn ? (
+            /* ── Login Prompt */
+            <motion.div
+              key="login-prompt"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="px-6 py-10 text-center"
+            >
+              <div className="w-16 h-16 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-4">
+                <LogIn className="w-8 h-8 text-brand" />
+              </div>
+              <h3 className="text-xl font-display font-bold text-foreground mb-2">
+                Sign In Required
+              </h3>
+              <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
+                Please log in with Internet Identity to submit your property
+                listing.
+              </p>
+              <Button
+                data-ocid="list_property.login_button"
+                onClick={() => login()}
+                disabled={isLoggingIn}
+                className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8 py-5"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Sign In to Continue
+                  </>
                 )}
-
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center ${plan.badgeColor}`}
-                  >
-                    {plan.icon}
+              </Button>
+            </motion.div>
+          ) : (
+            /* ── Form */
+            <motion.form
+              key="form"
+              onSubmit={handleSubmit}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="px-6 py-6 space-y-6"
+            >
+              {/* Section: Hotel Details */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-white" />
                   </div>
-                  <div>
-                    <h3 className="font-display font-bold text-lg text-foreground">
-                      {plan.name}
-                    </h3>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-2xl font-display font-extrabold text-foreground">
-                        {plan.price}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {plan.period}
-                      </span>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Hotel Details
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {/* Hotel Name */}
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="lp-hotel-name"
+                      className="text-sm font-semibold"
+                    >
+                      Hotel Name <span className="text-brand">*</span>
+                    </Label>
+                    <Input
+                      id="lp-hotel-name"
+                      data-ocid="list_property.hotel_name_input"
+                      placeholder="e.g. Hotel Grand Palace"
+                      value={form.hotelName}
+                      onChange={(e) => updateField("hotelName", e.target.value)}
+                      required
+                      className="rounded-lg border-input"
+                    />
+                  </div>
+
+                  {/* City + Price row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-city"
+                        className="text-sm font-semibold"
+                      >
+                        City <span className="text-brand">*</span>
+                      </Label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="lp-city"
+                          data-ocid="list_property.city_input"
+                          placeholder="e.g. Patna"
+                          value={form.city}
+                          onChange={(e) => updateField("city", e.target.value)}
+                          required
+                          className="pl-9 rounded-lg border-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-price"
+                        className="text-sm font-semibold"
+                      >
+                        Price Per Night (₹){" "}
+                        <span className="text-brand">*</span>
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">
+                          ₹
+                        </span>
+                        <Input
+                          id="lp-price"
+                          data-ocid="list_property.price_input"
+                          type="number"
+                          min={100}
+                          placeholder="999"
+                          value={form.pricePerNight}
+                          onChange={(e) =>
+                            updateField("pricePerNight", e.target.value)
+                          }
+                          required
+                          className="pl-7 rounded-lg border-input"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="lp-address"
+                      className="text-sm font-semibold"
+                    >
+                      Address <span className="text-brand">*</span>
+                    </Label>
+                    <Input
+                      id="lp-address"
+                      data-ocid="list_property.address_input"
+                      placeholder="Street address, landmark"
+                      value={form.address}
+                      onChange={(e) => updateField("address", e.target.value)}
+                      required
+                      className="rounded-lg border-input"
+                    />
+                  </div>
+
+                  {/* Room Type */}
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="lp-room-type"
+                      className="text-sm font-semibold"
+                    >
+                      Room Type <span className="text-brand">*</span>
+                    </Label>
+                    <Select
+                      value={form.roomType}
+                      onValueChange={(v) => updateField("roomType", v)}
+                      required
+                    >
+                      <SelectTrigger
+                        id="lp-room-type"
+                        data-ocid="list_property.room_type_select"
+                        className="rounded-lg border-input"
+                      >
+                        <SelectValue placeholder="Select room type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROOM_TYPES.map((rt) => (
+                          <SelectItem key={rt} value={rt}>
+                            {rt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="lp-description"
+                      className="text-sm font-semibold"
+                    >
+                      Description
+                    </Label>
+                    <Textarea
+                      id="lp-description"
+                      data-ocid="list_property.description_textarea"
+                      placeholder="Brief description of your hotel, its location and unique offerings..."
+                      value={form.description}
+                      onChange={(e) =>
+                        updateField("description", e.target.value)
+                      }
+                      className="rounded-lg border-input min-h-[80px] resize-none"
+                    />
+                  </div>
+
+                  {/* Amenities */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Amenities</Label>
+                    <div className="flex flex-wrap gap-4">
+                      {AMENITY_OPTIONS.map((amenity) => (
+                        <div
+                          key={amenity}
+                          className="flex items-center gap-2.5"
+                        >
+                          <Checkbox
+                            id={`lp-amenity-${amenity.toLowerCase()}`}
+                            data-ocid={`list_property.amenity_${amenity.toLowerCase()}_checkbox`}
+                            checked={form.amenities.includes(amenity)}
+                            onCheckedChange={() => toggleAmenity(amenity)}
+                            className="border-border data-[state=checked]:bg-brand data-[state=checked]:border-brand"
+                          />
+                          <Label
+                            htmlFor={`lp-amenity-${amenity.toLowerCase()}`}
+                            className="flex items-center gap-1.5 text-sm cursor-pointer"
+                          >
+                            {amenity === "WiFi" && (
+                              <Wifi className="w-3.5 h-3.5 text-muted-foreground" />
+                            )}
+                            {amenity === "AC" && (
+                              <Wind className="w-3.5 h-3.5 text-muted-foreground" />
+                            )}
+                            {amenity === "Parking" && (
+                              <Car className="w-3.5 h-3.5 text-muted-foreground" />
+                            )}
+                            {amenity}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <ul className="space-y-2 flex-1">
-                  {plan.features.map((feature) => (
-                    <li
-                      key={feature}
-                      className="flex items-start gap-2 text-sm text-foreground"
+              <Separator />
+
+              {/* Section: Owner Details */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Owner Details
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="lp-owner-name"
+                      className="text-sm font-semibold"
                     >
-                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
+                      Owner Name <span className="text-brand">*</span>
+                    </Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="lp-owner-name"
+                        data-ocid="list_property.owner_name_input"
+                        placeholder="Full name"
+                        value={form.ownerName}
+                        onChange={(e) =>
+                          updateField("ownerName", e.target.value)
+                        }
+                        required
+                        className="pl-9 rounded-lg border-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-owner-phone"
+                        className="text-sm font-semibold"
+                      >
+                        Phone <span className="text-brand">*</span>
+                      </Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="lp-owner-phone"
+                          data-ocid="list_property.owner_phone_input"
+                          type="tel"
+                          placeholder="+91 98765 43210"
+                          value={form.ownerPhone}
+                          onChange={(e) =>
+                            updateField("ownerPhone", e.target.value)
+                          }
+                          required
+                          className="pl-9 rounded-lg border-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-owner-email"
+                        className="text-sm font-semibold"
+                      >
+                        Email <span className="text-brand">*</span>
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          id="lp-owner-email"
+                          data-ocid="list_property.owner_email_input"
+                          type="email"
+                          placeholder="owner@example.com"
+                          value={form.ownerEmail}
+                          onChange={(e) =>
+                            updateField("ownerEmail", e.target.value)
+                          }
+                          required
+                          className="pl-9 rounded-lg border-input"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                <Button
-                  data-ocid={plan.ocid}
-                  onClick={() =>
-                    toast.info(
-                      `Contact us at hidestay@example.com to subscribe to ${plan.name} plan.`,
-                    )
-                  }
-                  className={`w-full font-semibold rounded-xl ${
-                    plan.popular
-                      ? "bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white"
-                      : "bg-muted hover:bg-muted/80 text-foreground"
-                  }`}
-                >
-                  Get Started
-                </Button>
-              </motion.div>
-            ))}
-          </div>
+              <Separator />
 
-          <p className="text-center text-xs text-muted-foreground mt-5">
-            All plans include unlimited guest bookings. Contact{" "}
-            <strong>hidestay@example.com</strong> to get started.
-          </p>
-        </div>
+              {/* Section: Subscription Plan */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center">
+                    <Zap className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Choose a Plan <span className="text-brand">*</span>
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {SUBSCRIPTION_PLANS.map((plan) => {
+                    const isSelected = form.subscriptionPlan === plan.id;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        data-ocid={`list_property.plan_${plan.id}_button`}
+                        onClick={() => updateField("subscriptionPlan", plan.id)}
+                        className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
+                          isSelected
+                            ? "border-brand bg-[oklch(0.97_0.01_25.5)] shadow-md"
+                            : "border-border hover:border-brand/40 hover:bg-muted/40"
+                        }`}
+                      >
+                        {plan.popular && (
+                          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
+                            <span className="bg-brand text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                              Popular
+                            </span>
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute top-2 right-2">
+                            <CheckCircle className="w-4 h-4 text-brand" />
+                          </div>
+                        )}
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${plan.badgeColor}`}
+                        >
+                          {plan.icon}
+                        </div>
+                        <div className="font-display font-bold text-sm text-foreground">
+                          {plan.name}
+                        </div>
+                        <div className="flex items-baseline gap-0.5 mb-2">
+                          <span className="text-lg font-display font-extrabold text-foreground">
+                            {plan.price}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {plan.period}
+                          </span>
+                        </div>
+                        <ul className="space-y-1">
+                          {plan.features.slice(0, 2).map((f) => (
+                            <li
+                              key={f}
+                              className="text-[11px] text-muted-foreground flex items-start gap-1"
+                            >
+                              <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!form.subscriptionPlan && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Please select a subscription plan to continue.
+                  </p>
+                )}
+              </div>
+
+              <Button
+                data-ocid="list_property.submit_button"
+                type="submit"
+                disabled={isPending || !form.subscriptionPlan}
+                className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold text-base py-5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="mr-2 h-4 w-4" />
+                    Submit Property for Review
+                  </>
+                )}
+              </Button>
+            </motion.form>
+          )}
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   );
@@ -797,10 +1290,85 @@ interface AdminPanelProps {
   actor: import("./backend").backendInterface | null;
 }
 
+function PropertyStatusBadge({ status }: { status: PropertyListingStatus }) {
+  if (status === PropertyListingStatus.PendingApproval) {
+    return (
+      <Badge className="bg-amber-50 text-amber-700 border-amber-200 font-semibold">
+        <AlertCircle className="w-3 h-3 mr-1" />
+        Pending Approval
+      </Badge>
+    );
+  }
+  if (status === PropertyListingStatus.Approved) {
+    return (
+      <Badge className="bg-green-50 text-green-700 border-green-200 font-semibold">
+        <CheckCircle className="w-3 h-3 mr-1" />
+        Approved
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-red-50 text-red-700 border-red-200 font-semibold">
+      <X className="w-3 h-3 mr-1" />
+      Rejected
+    </Badge>
+  );
+}
+
 function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
+  const queryClient = useQueryClient();
   const [emailSearch, setEmailSearch] = useState("");
   const [searchedEmail, setSearchedEmail] = useState("");
 
+  // Property Listings Query
+  const { data: propertyListings = [], isLoading: listingsLoading } = useQuery<
+    PropertyListing[]
+  >({
+    queryKey: ["admin-property-listings"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getPropertyListings();
+    },
+    enabled: !!actor && open,
+  });
+
+  const pendingCount = propertyListings.filter(
+    (l) => l.status === PropertyListingStatus.PendingApproval,
+  ).length;
+
+  // Approve mutation
+  const { mutate: approveListing } = useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      await actor.approvePropertyListing(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-property-listings"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-listings-count"] });
+      toast.success("Property approved successfully!");
+    },
+    onError: () => {
+      toast.error("Failed to approve. Please try again.");
+    },
+  });
+
+  // Reject mutation
+  const { mutate: rejectListing } = useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      await actor.rejectPropertyListing(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-property-listings"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-listings-count"] });
+      toast.success("Property rejected.");
+    },
+    onError: () => {
+      toast.error("Failed to reject. Please try again.");
+    },
+  });
+
+  // Bookings
   const {
     data: bookings = [],
     isLoading: bookingsLoading,
@@ -844,7 +1412,7 @@ function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
                   </div>
                   <div>
                     <span className="font-display text-lg font-extrabold text-white tracking-tight block leading-none">
-                      Hotel Admin Panel
+                      Super Admin Panel
                     </span>
                     <span className="text-white/70 text-xs font-medium">
                       HIDESTAY
@@ -865,7 +1433,160 @@ function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
           </div>
 
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-            {/* Bookings Section */}
+            {/* ── Property Submissions Section */}
+            <section data-ocid="admin.property_submissions.section">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  Property Submissions
+                </h2>
+                {pendingCount > 0 && (
+                  <span className="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                    {pendingCount} pending
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground text-sm mb-5">
+                Review hotel listing applications from property owners.
+              </p>
+
+              {listingsLoading ? (
+                <div
+                  data-ocid="admin.property_submissions.loading_state"
+                  className="text-center py-8"
+                >
+                  <Loader2 className="w-8 h-8 animate-spin text-brand mx-auto" />
+                  <p className="text-muted-foreground text-sm mt-2">
+                    Loading submissions...
+                  </p>
+                </div>
+              ) : propertyListings.length === 0 ? (
+                <div
+                  data-ocid="admin.property_submissions.empty_state"
+                  className="text-center py-12 bg-muted/30 rounded-2xl border border-dashed border-border"
+                >
+                  <Building2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-foreground font-semibold">
+                    No submissions yet
+                  </p>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Property listing applications will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  data-ocid="admin.property_submissions.list"
+                  className="space-y-3"
+                >
+                  {propertyListings.map((listing, idx) => (
+                    <motion.div
+                      key={listing.id.toString()}
+                      data-ocid={`admin.property_submissions.item.${idx + 1}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04 }}
+                      className="bg-card border border-border rounded-xl p-5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <h3 className="font-display font-bold text-foreground text-base leading-tight">
+                              {listing.hotelName}
+                            </h3>
+                            <Badge
+                              variant="secondary"
+                              className="text-[11px] px-2 py-0 bg-teal-50 text-teal-700 border border-teal-200/70 font-semibold shrink-0"
+                            >
+                              {listing.roomType}
+                            </Badge>
+                            <Badge
+                              variant="secondary"
+                              className="text-[11px] px-2 py-0 bg-brand/10 text-brand border-brand/20 font-semibold shrink-0 capitalize"
+                            >
+                              {listing.subscriptionPlan}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 shrink-0" />
+                            {listing.city}
+                          </p>
+                        </div>
+                        <div className="shrink-0">
+                          <PropertyStatusBadge status={listing.status} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Owner</p>
+                          <p className="font-semibold truncate">
+                            {listing.ownerName}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Phone</p>
+                          <p className="font-semibold">{listing.ownerPhone}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Email</p>
+                          <p className="font-semibold truncate">
+                            {listing.ownerEmail}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            Price / Night
+                          </p>
+                          <p className="font-display font-bold text-brand">
+                            ₹{formatPrice(listing.pricePerNight)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/60">
+                        <p className="text-xs text-muted-foreground">
+                          Submitted:{" "}
+                          {new Date(
+                            Number(listing.submittedAt),
+                          ).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </p>
+                        {listing.status ===
+                          PropertyListingStatus.PendingApproval && (
+                          <div className="flex gap-2">
+                            <Button
+                              data-ocid={`admin.property_submissions.approve_button.${idx + 1}`}
+                              size="sm"
+                              onClick={() => approveListing(listing.id)}
+                              className="bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-xs gap-1.5"
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                              Approve
+                            </Button>
+                            <Button
+                              data-ocid={`admin.property_submissions.reject_button.${idx + 1}`}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => rejectListing(listing.id)}
+                              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-semibold rounded-lg text-xs gap-1.5"
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <Separator />
+
+            {/* ── Bookings Section */}
             <section>
               <h2 className="font-display text-2xl font-bold text-foreground mb-2">
                 Guest Bookings Lookup
@@ -1324,6 +2045,7 @@ interface HeaderProps {
   onListPropertyClick: () => void;
   onAdminClick: () => void;
   isAdmin: boolean;
+  pendingListingsCount: number;
 }
 
 function Header({
@@ -1331,6 +2053,7 @@ function Header({
   onListPropertyClick,
   onAdminClick,
   isAdmin,
+  pendingListingsCount,
 }: HeaderProps) {
   const { identity, clear } = useInternetIdentity();
   const isLoggedIn = !!identity;
@@ -1376,10 +2099,15 @@ function Header({
                 onClick={onAdminClick}
                 size="sm"
                 variant="outline"
-                className="border-white/50 text-white hover:bg-white/10 hover:text-white bg-transparent font-semibold rounded-lg text-sm gap-1.5"
+                className="relative border-white/50 text-white hover:bg-white/10 hover:text-white bg-transparent font-semibold rounded-lg text-sm gap-1.5"
               >
                 <Settings className="w-4 h-4" />
                 <span className="hidden sm:inline">Admin Panel</span>
+                {pendingListingsCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-white text-[10px] font-extrabold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 leading-none shadow-sm">
+                    {pendingListingsCount}
+                  </span>
+                )}
               </Button>
             )}
 
@@ -1791,7 +2519,7 @@ export default function App() {
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
 
   // ── Admin check
@@ -1802,6 +2530,20 @@ export default function App() {
       return actor.isCallerAdmin();
     },
     enabled: !!actor && !actorLoading,
+  });
+
+  // ── Pending listings count (admin only)
+  const { data: pendingListingsCount = 0 } = useQuery<number>({
+    queryKey: ["pending-listings-count"],
+    queryFn: async () => {
+      if (!actor || !isAdmin) return 0;
+      const listings = await actor.getPropertyListings();
+      return listings.filter(
+        (l) => l.status === PropertyListingStatus.PendingApproval,
+      ).length;
+    },
+    enabled: !!actor && !actorLoading && isAdmin,
+    refetchInterval: 30000,
   });
 
   // ── Hotels Query
@@ -1876,9 +2618,10 @@ export default function App() {
       {/* Header */}
       <Header
         onLoginClick={() => setLoginModalOpen(true)}
-        onListPropertyClick={() => setSubscriptionModalOpen(true)}
+        onListPropertyClick={() => setListPropertyModalOpen(true)}
         onAdminClick={() => setAdminPanelOpen(true)}
         isAdmin={isAdmin}
+        pendingListingsCount={pendingListingsCount}
       />
 
       {/* Hero */}
@@ -2056,10 +2799,11 @@ export default function App() {
         onClose={() => setLoginModalOpen(false)}
       />
 
-      {/* Subscription Modal */}
-      <SubscriptionModal
-        open={subscriptionModalOpen}
-        onClose={() => setSubscriptionModalOpen(false)}
+      {/* List Property Modal */}
+      <ListPropertyModal
+        open={listPropertyModalOpen}
+        onClose={() => setListPropertyModalOpen(false)}
+        actor={actor}
       />
 
       {/* Admin Panel */}
