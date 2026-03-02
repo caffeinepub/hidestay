@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mona Sans - Display & UI */
+@font-face {
+  font-family: "Mona Sans";
+  src: url("/assets/fonts/MonaSans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Plus Jakarta Sans - Body */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* StayEase OYO-inspired Red & White theme */
+    /* Primary: Vivid OYO Red */
+    --primary: 0.52 0.22 25.5;
+    --primary-foreground: 1 0 0;
+
+    /* Background: Clean white */
+    --background: 0.99 0 0;
+    --foreground: 0.15 0.02 255;
+
+    /* Card: Pure white with very subtle warmth */
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.02 255;
+
+    /* Popover */
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.02 255;
+
+    /* Secondary: Soft warm gray */
+    --secondary: 0.96 0.005 250;
+    --secondary-foreground: 0.25 0.02 255;
+
+    /* Muted: Light gray */
+    --muted: 0.95 0.005 250;
+    --muted-foreground: 0.52 0.01 250;
+
+    /* Accent: Light red tint */
+    --accent: 0.96 0.02 25;
+    --accent-foreground: 0.52 0.22 25.5;
+
+    /* Destructive */
+    --destructive: 0.52 0.22 25.5;
+    --destructive-foreground: 1 0 0;
+
+    /* Border: Subtle */
+    --border: 0.9 0.005 250;
+    --input: 0.92 0.005 250;
+    --ring: 0.52 0.22 25.5;
+
+    /* Charts */
+    --chart-1: 0.52 0.22 25.5;
+    --chart-2: 0.6 0.15 200;
+    --chart-3: 0.7 0.12 150;
+    --chart-4: 0.65 0.18 60;
+    --chart-5: 0.55 0.2 300;
+
+    /* Sidebar */
+    --sidebar: 0.99 0 0;
+    --sidebar-foreground: 0.15 0.02 255;
+    --sidebar-primary: 0.52 0.22 25.5;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.96 0.02 25;
+    --sidebar-accent-foreground: 0.52 0.22 25.5;
+    --sidebar-border: 0.9 0.005 250;
+    --sidebar-ring: 0.52 0.22 25.5;
+
+    /* Custom brand tokens */
+    --brand-red: oklch(0.52 0.22 25.5);
+    --brand-red-light: oklch(0.62 0.18 25.5);
+    --brand-red-dark: oklch(0.42 0.22 25.5);
+    --brand-red-bg: oklch(0.97 0.015 25.5);
+    --brand-gold: oklch(0.75 0.15 75);
+    --hero-overlay: linear-gradient(
+      135deg,
+      oklch(0.42 0.22 25.5 / 0.88) 0%,
+      oklch(0.28 0.18 25.5 / 0.75) 50%,
+      oklch(0.18 0.08 250 / 0.7) 100%
+    );
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Plus Jakarta Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Mona Sans", sans-serif;
+    font-weight: 700;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Mona Sans", sans-serif;
+  }
+
+  .font-body {
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+
+  .brand-gradient {
+    background: linear-gradient(135deg, var(--brand-red) 0%, var(--brand-red-dark) 100%);
+  }
+
+  .hero-overlay {
+    background: var(--hero-overlay);
+  }
+
+  .text-brand {
+    color: var(--brand-red);
+  }
+
+  .bg-brand {
+    background-color: var(--brand-red);
+  }
+
+  .bg-brand-light {
+    background-color: var(--brand-red-bg);
+  }
+
+  /* Smooth hotel card hover — upgraded elevation */
+  .hotel-card-hover {
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.28s ease;
+    box-shadow:
+      0 1px 3px oklch(0 0 0 / 0.07),
+      0 4px 14px oklch(0 0 0 / 0.06),
+      0 0 0 1px oklch(0.9 0.005 250);
+  }
+
+  .hotel-card-hover:hover {
+    transform: translateY(-5px);
+    box-shadow:
+      0 4px 8px oklch(0 0 0 / 0.06),
+      0 16px 48px oklch(0.52 0.22 25.5 / 0.14),
+      0 0 0 1px oklch(0.52 0.22 25.5 / 0.12);
+  }
+
+  /* Search field divider */
+  .search-field-divider {
+    position: relative;
+  }
+  .search-field-divider::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 20%;
+    height: 60%;
+    width: 1px;
+    background: oklch(0.88 0.005 250);
+  }
+
+  /* Trust strip gradient */
+  .trust-strip {
+    background: linear-gradient(
+      to right,
+      oklch(0.98 0.008 25.5),
+      oklch(0.975 0.004 60),
+      oklch(0.98 0.008 25.5)
+    );
+    border-top: 1px solid oklch(0.93 0.01 25.5);
+    border-bottom: 1px solid oklch(0.93 0.01 25.5);
+  }
+
+  /* Star rating gold */
+  .star-gold {
+    color: oklch(0.75 0.15 75);
+  }
+
+  /* Skeleton shimmer animation */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      oklch(0.93 0 0) 25%,
+      oklch(0.97 0 0) 50%,
+      oklch(0.93 0 0) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
