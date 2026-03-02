@@ -31,10 +31,21 @@ export const Booking = IDL.Record({
   'checkOut' : IDL.Text,
   'phone' : IDL.Text,
 });
+export const BlockedDate = IDL.Record({
+  'id' : IDL.Nat,
+  'date' : IDL.Text,
+  'hotelId' : IDL.Nat,
+  'reason' : IDL.Text,
+});
 export const UserProfile = IDL.Record({
   'name' : IDL.Text,
   'email' : IDL.Text,
   'phone' : IDL.Text,
+});
+export const HotelApprovalStatus = IDL.Variant({
+  'Approved' : IDL.Null,
+  'Rejected' : IDL.Null,
+  'Pending' : IDL.Null,
 });
 export const Hotel = IDL.Record({
   'id' : IDL.Nat,
@@ -44,6 +55,7 @@ export const Hotel = IDL.Record({
   'name' : IDL.Text,
   'description' : IDL.Text,
   'amenities' : IDL.Vec(IDL.Text),
+  'approvalStatus' : HotelApprovalStatus,
   'address' : IDL.Text,
   'imageIndex' : IDL.Nat,
 });
@@ -69,6 +81,12 @@ export const PropertyListing = IDL.Record({
   'address' : IDL.Text,
   'roomType' : IDL.Text,
 });
+export const RoomInventory = IDL.Record({
+  'availableRooms' : IDL.Nat,
+  'hotelId' : IDL.Nat,
+  'roomType' : IDL.Text,
+  'totalRooms' : IDL.Nat,
+});
 export const HotelQueryParams = IDL.Record({
   'city' : IDL.Opt(IDL.Text),
   'amenities' : IDL.Opt(IDL.Vec(IDL.Text)),
@@ -78,8 +96,11 @@ export const HotelQueryParams = IDL.Record({
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'approveHotel' : IDL.Func([IDL.Nat], [], []),
   'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'assignHotelOwner' : IDL.Func([IDL.Nat, IDL.Principal], [], []),
+  'blockDate' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'cancelBooking' : IDL.Func([IDL.Nat], [], []),
   'createBooking' : IDL.Func(
       [
@@ -95,12 +116,19 @@ export const idlService = IDL.Service({
       [IDL.Nat],
       [],
     ),
+  'getAllBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+  'getBlockedDates' : IDL.Func([], [IDL.Vec(BlockedDate)], ['query']),
   'getBooking' : IDL.Func([IDL.Nat], [Booking], ['query']),
   'getBookingsByEmail' : IDL.Func([IDL.Text], [IDL.Vec(Booking)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+  'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
+  'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
   'getMyPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
+  'getOwnerBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+  'getOwnerHotel' : IDL.Func([], [Hotel], ['query']),
+  'getOwnerRoomInventory' : IDL.Func([], [RoomInventory], ['query']),
   'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
@@ -108,7 +136,9 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'rejectHotel' : IDL.Func([IDL.Nat], [], []),
   'rejectPropertyListing' : IDL.Func([IDL.Nat], [], []),
+  'revokeHotelOwner' : IDL.Func([IDL.Nat], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'searchHotels' : IDL.Func([HotelQueryParams], [IDL.Vec(Hotel)], ['query']),
   'submitPropertyListing' : IDL.Func(
@@ -129,6 +159,9 @@ export const idlService = IDL.Service({
       [IDL.Nat],
       [],
     ),
+  'unblockDate' : IDL.Func([IDL.Nat], [], []),
+  'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
+  'updateRoomInventory' : IDL.Func([IDL.Text, IDL.Nat], [], []),
 });
 
 export const idlInitArgs = [];
@@ -157,10 +190,21 @@ export const idlFactory = ({ IDL }) => {
     'checkOut' : IDL.Text,
     'phone' : IDL.Text,
   });
+  const BlockedDate = IDL.Record({
+    'id' : IDL.Nat,
+    'date' : IDL.Text,
+    'hotelId' : IDL.Nat,
+    'reason' : IDL.Text,
+  });
   const UserProfile = IDL.Record({
     'name' : IDL.Text,
     'email' : IDL.Text,
     'phone' : IDL.Text,
+  });
+  const HotelApprovalStatus = IDL.Variant({
+    'Approved' : IDL.Null,
+    'Rejected' : IDL.Null,
+    'Pending' : IDL.Null,
   });
   const Hotel = IDL.Record({
     'id' : IDL.Nat,
@@ -170,6 +214,7 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'description' : IDL.Text,
     'amenities' : IDL.Vec(IDL.Text),
+    'approvalStatus' : HotelApprovalStatus,
     'address' : IDL.Text,
     'imageIndex' : IDL.Nat,
   });
@@ -195,6 +240,12 @@ export const idlFactory = ({ IDL }) => {
     'address' : IDL.Text,
     'roomType' : IDL.Text,
   });
+  const RoomInventory = IDL.Record({
+    'availableRooms' : IDL.Nat,
+    'hotelId' : IDL.Nat,
+    'roomType' : IDL.Text,
+    'totalRooms' : IDL.Nat,
+  });
   const HotelQueryParams = IDL.Record({
     'city' : IDL.Opt(IDL.Text),
     'amenities' : IDL.Opt(IDL.Vec(IDL.Text)),
@@ -204,8 +255,11 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'approveHotel' : IDL.Func([IDL.Nat], [], []),
     'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'assignHotelOwner' : IDL.Func([IDL.Nat, IDL.Principal], [], []),
+    'blockDate' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'cancelBooking' : IDL.Func([IDL.Nat], [], []),
     'createBooking' : IDL.Func(
         [
@@ -221,16 +275,23 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
+    'getAllBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+    'getBlockedDates' : IDL.Func([], [IDL.Vec(BlockedDate)], ['query']),
     'getBooking' : IDL.Func([IDL.Nat], [Booking], ['query']),
     'getBookingsByEmail' : IDL.Func([IDL.Text], [IDL.Vec(Booking)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+    'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
+    'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
     'getMyPropertyListings' : IDL.Func(
         [],
         [IDL.Vec(PropertyListing)],
         ['query'],
       ),
+    'getOwnerBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+    'getOwnerHotel' : IDL.Func([], [Hotel], ['query']),
+    'getOwnerRoomInventory' : IDL.Func([], [RoomInventory], ['query']),
     'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
@@ -238,7 +299,9 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'rejectHotel' : IDL.Func([IDL.Nat], [], []),
     'rejectPropertyListing' : IDL.Func([IDL.Nat], [], []),
+    'revokeHotelOwner' : IDL.Func([IDL.Nat], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'searchHotels' : IDL.Func([HotelQueryParams], [IDL.Vec(Hotel)], ['query']),
     'submitPropertyListing' : IDL.Func(
@@ -259,6 +322,9 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
+    'unblockDate' : IDL.Func([IDL.Nat], [], []),
+    'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
+    'updateRoomInventory' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   });
 };
 

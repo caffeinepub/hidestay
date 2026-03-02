@@ -24,16 +24,24 @@ import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
   BadgeCheck,
   Banknote,
+  BookOpen,
   Building2,
   Calendar,
   Car,
   CheckCircle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
+  Clock,
   Crown,
   Home,
+  Info,
+  LayoutDashboard,
   Loader2,
   LogIn,
   LogOut,
@@ -42,6 +50,7 @@ import {
   Phone,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   Star,
   ThumbsDown,
@@ -51,13 +60,20 @@ import {
   Wifi,
   Wind,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import type { Booking, Hotel, PropertyListing } from "./backend.d";
-import { PropertyListingStatus } from "./backend.d";
+import {
+  HotelApprovalStatus,
+  PropertyListingStatus,
+  Status,
+} from "./backend.d";
+import { OwnerDashboard, useIsOwner } from "./components/OwnerDashboard";
+import { SuperAdminPanel } from "./components/SuperAdminPanel";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Helpers
@@ -77,32 +93,29 @@ interface FilterState {
 }
 
 const HOTEL_IMAGE_MAP: Record<number, string> = {
-  1: "/assets/generated/patna-hotel-1.dim_800x500.jpg",
-  2: "/assets/generated/patna-hotel-2.dim_800x500.jpg",
-  3: "/assets/generated/patna-hotel-3.dim_800x500.jpg",
-  4: "/assets/generated/gaya-hotel-1.dim_800x500.jpg",
-  5: "/assets/generated/gaya-hotel-2.dim_800x500.jpg",
-  6: "/assets/generated/gaya-hotel-3.dim_800x500.jpg",
-  7: "/assets/generated/muzaffarpur-hotel-1.dim_800x500.jpg",
-  8: "/assets/generated/muzaffarpur-hotel-2.dim_800x500.jpg",
-  9: "/assets/generated/muzaffarpur-hotel-3.dim_800x500.jpg",
-  10: "/assets/generated/ranchi-hotel-1.dim_800x500.jpg",
-  11: "/assets/generated/ranchi-hotel-2.dim_800x500.jpg",
-  12: "/assets/generated/ranchi-hotel-3.dim_800x500.jpg",
-  13: "/assets/generated/varanasi-hotel-1.dim_800x500.jpg",
-  14: "/assets/generated/varanasi-hotel-2.dim_800x500.jpg",
-  15: "/assets/generated/varanasi-hotel-3.dim_800x500.jpg",
-  16: "/assets/generated/lucknow-hotel-1.dim_800x500.jpg",
-  17: "/assets/generated/lucknow-hotel-2.dim_800x500.jpg",
-  18: "/assets/generated/lucknow-hotel-3.dim_800x500.jpg",
+  1: "/assets/generated/haridwar-hotel-1.dim_800x500.jpg",
+  2: "/assets/generated/haridwar-hotel-2.dim_800x500.jpg",
+  3: "/assets/generated/haridwar-hotel-3.dim_800x500.jpg",
+  4: "/assets/generated/rishikesh-hotel-1.dim_800x500.jpg",
+  5: "/assets/generated/rishikesh-hotel-2.dim_800x500.jpg",
+  6: "/assets/generated/rishikesh-hotel-3.dim_800x500.jpg",
+  7: "/assets/generated/mussoorie-hotel-1.dim_800x500.jpg",
+  8: "/assets/generated/mussoorie-hotel-2.dim_800x500.jpg",
+  9: "/assets/generated/mussoorie-hotel-3.dim_800x500.jpg",
+  10: "/assets/generated/dhanaulti-hotel-1.dim_800x500.jpg",
+  11: "/assets/generated/dhanaulti-hotel-2.dim_800x500.jpg",
+  12: "/assets/generated/dhanaulti-hotel-3.dim_800x500.jpg",
+  13: "/assets/generated/dehradun-hotel-1.dim_800x500.jpg",
+  14: "/assets/generated/dehradun-hotel-2.dim_800x500.jpg",
+  15: "/assets/generated/dehradun-hotel-3.dim_800x500.jpg",
 };
 
 function getHotelImageSrc(imageIndex: bigint): string {
   const idx = Number(imageIndex);
   return (
     HOTEL_IMAGE_MAP[idx] ??
-    HOTEL_IMAGE_MAP[((idx - 1) % 18) + 1] ??
-    "/assets/generated/patna-hotel-1.dim_800x500.jpg"
+    HOTEL_IMAGE_MAP[((idx - 1) % 15) + 1] ??
+    "/assets/generated/haridwar-hotel-1.dim_800x500.jpg"
   );
 }
 
@@ -218,16 +231,573 @@ function AmenityChip({ amenity }: { amenity: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hotel Detail Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface HotelDetailPageProps {
+  hotelId: bigint;
+  actor: import("./backend").backendInterface | null;
+  searchParams: SearchParams;
+  onBack: () => void;
+  onBookNow: (hotel: Hotel) => void;
+}
+
+function HotelDetailPage({
+  hotelId,
+  actor,
+  searchParams: _searchParams,
+  onBack,
+  onBookNow,
+}: HotelDetailPageProps) {
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  const {
+    data: hotel,
+    isLoading,
+    isError,
+  } = useQuery<Hotel>({
+    queryKey: ["hotel", hotelId.toString()],
+    queryFn: async () => {
+      if (!actor) throw new Error("Actor not ready");
+      return actor.getHotel(hotelId);
+    },
+    enabled: !!actor,
+  });
+
+  // Derived image sources from hotel data
+  const imageSrcs = hotel
+    ? [
+        getHotelImageSrc(hotel.imageIndex),
+        getHotelImageSrc((hotel.imageIndex % 15n) + 1n),
+        getHotelImageSrc(((hotel.imageIndex + 1n) % 15n) + 1n),
+      ]
+    : [];
+
+  const handlePrevImage = () =>
+    setActiveImageIndex((prev) => (prev === 0 ? 2 : prev - 1));
+  const handleNextImage = () =>
+    setActiveImageIndex((prev) => (prev === 2 ? 0 : prev + 1));
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <motion.div
+        data-ocid="hotel_detail.loading_state"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="min-h-screen bg-background"
+      >
+        {/* Back button skeleton */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4">
+          <div className="skeleton-shimmer h-9 w-36 rounded-xl" />
+        </div>
+        {/* Gallery skeleton */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 h-[320px] sm:h-[380px]">
+            <div className="skeleton-shimmer rounded-2xl lg:col-span-2 h-full" />
+            <div className="hidden lg:flex flex-col gap-3">
+              <div className="skeleton-shimmer rounded-2xl flex-1" />
+              <div className="skeleton-shimmer rounded-2xl flex-1" />
+            </div>
+          </div>
+        </div>
+        {/* Content skeletons */}
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-5">
+          <div className="skeleton-shimmer h-9 w-3/4 rounded" />
+          <div className="skeleton-shimmer h-5 w-1/3 rounded" />
+          <div className="skeleton-shimmer h-5 w-1/2 rounded" />
+          <div className="flex gap-2">
+            {(["a", "b", "c"] as const).map((k) => (
+              <div key={k} className="skeleton-shimmer h-7 w-16 rounded-full" />
+            ))}
+          </div>
+          <div className="space-y-2">
+            <div className="skeleton-shimmer h-4 w-full rounded" />
+            <div className="skeleton-shimmer h-4 w-5/6 rounded" />
+            <div className="skeleton-shimmer h-4 w-4/5 rounded" />
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Error state
+  if (isError || !hotel) {
+    return (
+      <motion.div
+        data-ocid="hotel_detail.error_state"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="min-h-screen bg-background flex flex-col items-center justify-center px-4"
+      >
+        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-5">
+          <AlertTriangle className="w-10 h-10 text-red-500" />
+        </div>
+        <h2 className="font-display text-2xl font-bold text-foreground mb-2 text-center">
+          Hotel Not Found
+        </h2>
+        <p className="text-muted-foreground text-center mb-6 max-w-sm">
+          We couldn't load the hotel details. Please go back and try again.
+        </p>
+        <Button
+          data-ocid="hotel_detail.back_button"
+          onClick={onBack}
+          className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Results
+        </Button>
+      </motion.div>
+    );
+  }
+
+  const descriptionParts = hotel.description.includes(" | ")
+    ? hotel.description.split(" | ")
+    : null;
+  const roomType = descriptionParts?.[0] ?? null;
+  const descriptionText = descriptionParts
+    ? descriptionParts.slice(1).join(" | ")
+    : hotel.description;
+
+  const RULES = [
+    "Unmarried couples are welcome",
+    "No smoking inside rooms (designated smoking areas available)",
+    "Pets not allowed",
+    "Outside food and alcohol not permitted",
+    "Guests must carry valid government-issued ID (Aadhaar / PAN / Passport)",
+    "Loud music and parties are not permitted after 10:00 PM",
+    "Hotel is not responsible for loss of valuables",
+  ];
+
+  const CANCELLATION_POLICIES = [
+    {
+      icon: (
+        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+      ),
+      text: "Free cancellation up to 24 hours before check-in",
+    },
+    {
+      icon: (
+        <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+      ),
+      text: "Cancellations within 24 hours: first night charge may apply",
+    },
+    {
+      icon: (
+        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+      ),
+      text: "No-show policy: full booking amount charged",
+    },
+    {
+      icon: <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />,
+      text: "To cancel, contact the hotel directly or use your booking ID",
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35 }}
+      className="min-h-screen bg-background pb-28"
+    >
+      {/* Back button */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-4">
+        <Button
+          data-ocid="hotel_detail.back_button"
+          variant="outline"
+          onClick={onBack}
+          className="gap-2 border-border text-foreground hover:bg-muted font-semibold rounded-xl text-sm"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Results
+        </Button>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* ── Image Gallery */}
+        <section>
+          {/* Desktop: 2/3 + 1/3 grid */}
+          <div className="hidden lg:grid grid-cols-3 gap-3 h-[380px] rounded-2xl overflow-hidden">
+            <div className="col-span-2 relative overflow-hidden">
+              <img
+                data-ocid="hotel_detail.gallery_image.1"
+                src={imageSrcs[0]}
+                alt={`${hotel.name} - main view`}
+                className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex-1 relative overflow-hidden rounded-tr-2xl">
+                <img
+                  data-ocid="hotel_detail.gallery_image.2"
+                  src={imageSrcs[1]}
+                  alt={`${hotel.name} - view 2`}
+                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                />
+              </div>
+              <div className="flex-1 relative overflow-hidden rounded-br-2xl">
+                <img
+                  data-ocid="hotel_detail.gallery_image.3"
+                  src={imageSrcs[2]}
+                  alt={`${hotel.name} - view 3`}
+                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile: single image with navigation */}
+          <div className="lg:hidden relative rounded-2xl overflow-hidden h-[260px] sm:h-[320px]">
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={activeImageIndex}
+                data-ocid={`hotel_detail.gallery_image.${activeImageIndex + 1}`}
+                src={imageSrcs[activeImageIndex]}
+                alt={`${hotel.name} - view ${activeImageIndex + 1}`}
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -30 }}
+                transition={{ duration: 0.25 }}
+                className="w-full h-full object-cover absolute inset-0"
+              />
+            </AnimatePresence>
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
+            {/* Navigation arrows */}
+            <button
+              type="button"
+              data-ocid="hotel_detail.gallery_prev_button"
+              onClick={handlePrevImage}
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
+              aria-label="Previous image"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              data-ocid="hotel_detail.gallery_next_button"
+              onClick={handleNextImage}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
+              aria-label="Next image"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+            {/* Dots indicator */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveImageIndex(i)}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${
+                    i === activeImageIndex
+                      ? "w-5 bg-white"
+                      : "w-1.5 bg-white/50"
+                  }`}
+                  aria-label={`Go to image ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── Hotel Header */}
+        <section>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              {roomType && (
+                <Badge
+                  variant="secondary"
+                  className="text-[11px] px-2.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200/70 font-semibold rounded-md mb-2"
+                >
+                  {roomType}
+                </Badge>
+              )}
+              <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground leading-tight mb-2">
+                {hotel.name}
+              </h1>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-2">
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-brand flex-shrink-0" />
+                  <span className="font-medium text-foreground">
+                    {hotel.city}
+                  </span>
+                </span>
+                {hotel.address && (
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <span className="line-clamp-1">{hotel.address}</span>
+                  </span>
+                )}
+              </div>
+              {/* Star rating */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star
+                      key={i}
+                      className={`w-4 h-4 ${
+                        i <= Number(hotel.starRating)
+                          ? "star-gold fill-current"
+                          : "text-muted-foreground/30"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className="text-sm font-bold text-foreground">
+                  {Number(hotel.starRating)}.0
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Star Hotel
+                </span>
+              </div>
+            </div>
+            {/* Price block */}
+            <div className="sm:text-right">
+              <div className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-0.5">
+                per night
+              </div>
+              <div className="text-4xl font-display font-extrabold text-brand leading-tight">
+                ₹{formatPrice(hotel.pricePerNight)}
+              </div>
+              <Badge className="bg-green-100 text-green-800 border-green-200 font-semibold mt-2 text-xs gap-1">
+                <Banknote className="w-3 h-3" />
+                Pay at Hotel
+              </Badge>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Pay at Hotel Banner */}
+        <section>
+          <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-4">
+            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Banknote className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="font-display font-bold text-green-800 text-base leading-tight">
+                Pay at Hotel — No Advance Payment Required
+              </p>
+              <p className="text-green-700 text-sm mt-0.5">
+                Reserve your room now and pay when you arrive. Zero online
+                payment, zero hassle.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Description */}
+        {descriptionText && (
+          <section>
+            <h2 className="font-display font-bold text-lg text-foreground mb-3">
+              About this Hotel
+            </h2>
+            <p className="text-muted-foreground leading-relaxed text-[15px]">
+              {descriptionText}
+            </p>
+          </section>
+        )}
+
+        {/* ── Amenities */}
+        {hotel.amenities.length > 0 && (
+          <section>
+            <h2 className="font-display font-bold text-lg text-foreground mb-3">
+              Amenities
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              {hotel.amenities.map((amenity) => {
+                const amenityConfig: Record<
+                  string,
+                  { icon: React.ReactNode; label: string }
+                > = {
+                  WiFi: {
+                    icon: <Wifi className="w-4 h-4 text-blue-500" />,
+                    label: "Free WiFi",
+                  },
+                  AC: {
+                    icon: <Wind className="w-4 h-4 text-cyan-500" />,
+                    label: "Air Conditioning",
+                  },
+                  Parking: {
+                    icon: <Car className="w-4 h-4 text-gray-600" />,
+                    label: "Free Parking",
+                  },
+                };
+                const config = amenityConfig[amenity] ?? {
+                  icon: <BadgeCheck className="w-4 h-4 text-green-500" />,
+                  label: amenity,
+                };
+                return (
+                  <div
+                    key={amenity}
+                    className="flex items-center gap-2.5 bg-card border border-border rounded-xl px-4 py-2.5 shadow-sm"
+                  >
+                    {config.icon}
+                    <span className="font-semibold text-sm text-foreground">
+                      {config.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* ── Check-in / Check-out Times */}
+        <section>
+          <h2 className="font-display font-bold text-lg text-foreground mb-3">
+            Check-in & Check-out
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div
+              data-ocid="hotel_detail.checkin_time_card"
+              className="bg-card border border-border rounded-2xl p-5 flex items-center gap-4"
+            >
+              <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Clock className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-0.5">
+                  Check-in
+                </p>
+                <p className="font-display font-extrabold text-2xl text-foreground">
+                  12:00 PM
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Noon onwards
+                </p>
+              </div>
+            </div>
+            <div
+              data-ocid="hotel_detail.checkout_time_card"
+              className="bg-card border border-border rounded-2xl p-5 flex items-center gap-4"
+            >
+              <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Clock className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-0.5">
+                  Check-out
+                </p>
+                <p className="font-display font-extrabold text-2xl text-foreground">
+                  11:00 AM
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Before 11 AM
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Rules & Regulations */}
+        <section data-ocid="hotel_detail.rules_section">
+          <h2 className="font-display font-bold text-lg text-foreground mb-3 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-brand" />
+            Rules & Regulations
+          </h2>
+          <div className="bg-card border border-border rounded-2xl divide-y divide-border overflow-hidden">
+            {RULES.map((rule, idx) => (
+              <motion.div
+                key={rule}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.04, duration: 0.3 }}
+                className="flex items-start gap-3 px-5 py-3.5"
+              >
+                <div className="w-5 h-5 bg-brand-light rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <CheckCircle className="w-3 h-3 text-brand" />
+                </div>
+                <p className="text-sm text-foreground leading-relaxed">
+                  {rule}
+                </p>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Cancellation Policy */}
+        <section data-ocid="hotel_detail.cancellation_section">
+          <h2 className="font-display font-bold text-lg text-foreground mb-3 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-amber-500" />
+            Cancellation Policy
+          </h2>
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+            {CANCELLATION_POLICIES.map((policy) => (
+              <div key={policy.text} className="flex items-start gap-3">
+                {policy.icon}
+                <p className="text-sm text-foreground leading-relaxed">
+                  {policy.text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Inline Book Now */}
+        <section className="pb-4">
+          <div className="bg-card border border-border rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-display font-bold text-xl text-foreground mb-0.5">
+                Ready to stay at {hotel.name}?
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Reserve now, pay on arrival — completely free to book
+              </p>
+            </div>
+            <Button
+              data-ocid="hotel_detail.book_now_button"
+              onClick={() => onBookNow(hotel)}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold text-base px-8 py-5 rounded-xl transition-all duration-200 hover:scale-[1.03] active:scale-95 gap-2 shadow-md shadow-green-200 whitespace-nowrap flex-shrink-0"
+            >
+              <Banknote className="w-5 h-5" />
+              Book Now (Pay at Hotel)
+            </Button>
+          </div>
+        </section>
+      </div>
+
+      {/* ── Sticky Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.08)]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-display font-bold text-foreground text-base leading-tight truncate">
+              {hotel.name}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-extrabold text-brand font-display text-lg">
+                ₹{formatPrice(hotel.pricePerNight)}
+              </span>{" "}
+              / night · Pay at Hotel
+            </p>
+          </div>
+          <Button
+            data-ocid="hotel_detail.sticky_book_now_button"
+            onClick={() => onBookNow(hotel)}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold text-sm px-6 py-5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-95 gap-2 shadow-md shadow-green-200 flex-shrink-0"
+          >
+            <Banknote className="w-4 h-4" />
+            Book Now
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hotel Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface HotelCardProps {
   hotel: Hotel;
   index: number;
-  onBookNow: (hotel: Hotel) => void;
+  onViewDetails: (hotel: Hotel) => void;
 }
 
-function HotelCard({ hotel, index, onBookNow }: HotelCardProps) {
+function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
   return (
     <motion.div
       data-ocid={`hotel.card.${index}`}
@@ -327,11 +897,11 @@ function HotelCard({ hotel, index, onBookNow }: HotelCardProps) {
             </span>
           </div>
           <Button
-            data-ocid={`hotel.book_now_button.${index}`}
-            onClick={() => onBookNow(hotel)}
+            data-ocid={`hotel.view_details_button.${index}`}
+            onClick={() => onViewDetails(hotel)}
             className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.04] active:scale-95 shadow-sm shadow-[oklch(0.52_0.22_25.5/0.3)]"
           >
-            Book Now
+            View Details
           </Button>
         </div>
       </div>
@@ -358,6 +928,10 @@ function BookingModal({
   searchParams,
   actor,
 }: BookingModalProps) {
+  const { identity, login, isLoggingIn } = useInternetIdentity();
+  const isLoggedIn = !!identity;
+  const queryClient = useQueryClient();
+
   const [form, setForm] = useState({
     guestName: "",
     guestEmail: "",
@@ -388,6 +962,7 @@ function BookingModal({
     },
     onSuccess: (id) => {
       setBookingId(id);
+      queryClient.invalidateQueries({ queryKey: ["admin-all-bookings"] });
       toast.success("Room reserved! Pay at the hotel on arrival.");
     },
     onError: () => {
@@ -454,7 +1029,45 @@ function BookingModal({
         </DialogHeader>
 
         <AnimatePresence mode="wait">
-          {bookingId !== null ? (
+          {!isLoggedIn ? (
+            /* Login Prompt */
+            <motion.div
+              key="login-prompt"
+              data-ocid="booking.login_prompt"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="px-6 py-10 text-center"
+            >
+              <div className="w-16 h-16 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-4">
+                <LogIn className="w-8 h-8 text-brand" />
+              </div>
+              <h3 className="text-xl font-display font-bold text-foreground mb-2">
+                Sign In to Book
+              </h3>
+              <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
+                Please sign in with Internet Identity to reserve your room.
+              </p>
+              <Button
+                data-ocid="booking.login_button"
+                onClick={() => login()}
+                disabled={isLoggingIn}
+                className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8 py-5"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Sign In to Continue
+                  </>
+                )}
+              </Button>
+            </motion.div>
+          ) : bookingId !== null ? (
             /* Success State */
             <motion.div
               data-ocid="booking.success_state"
@@ -947,7 +1560,7 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
                         <Input
                           id="lp-city"
                           data-ocid="list_property.city_input"
-                          placeholder="e.g. Patna"
+                          placeholder="e.g. Haridwar"
                           value={form.city}
                           onChange={(e) => updateField("city", e.target.value)}
                           required
@@ -1281,138 +1894,802 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Admin Panel
+// My Bookings Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface AdminPanelProps {
+interface MyBookingsPageProps {
   open: boolean;
   onClose: () => void;
   actor: import("./backend").backendInterface | null;
 }
 
-function PropertyStatusBadge({ status }: { status: PropertyListingStatus }) {
-  if (status === PropertyListingStatus.PendingApproval) {
+function BookingStatusBadge({ status }: { status: Status }) {
+  if (status === Status.Confirmed) {
     return (
-      <Badge className="bg-amber-50 text-amber-700 border-amber-200 font-semibold">
-        <AlertCircle className="w-3 h-3 mr-1" />
-        Pending Approval
+      <Badge className="bg-green-50 text-green-700 border-green-200 font-semibold text-xs gap-1 shrink-0">
+        <CheckCircle className="w-3 h-3" />
+        Confirmed
       </Badge>
     );
   }
-  if (status === PropertyListingStatus.Approved) {
+  if (status === Status.Pending) {
     return (
-      <Badge className="bg-green-50 text-green-700 border-green-200 font-semibold">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Approved
+      <Badge className="bg-amber-50 text-amber-700 border-amber-200 font-semibold text-xs gap-1 shrink-0">
+        <Clock className="w-3 h-3" />
+        Reserved
       </Badge>
     );
   }
   return (
-    <Badge className="bg-red-50 text-red-700 border-red-200 font-semibold">
-      <X className="w-3 h-3 mr-1" />
-      Rejected
+    <Badge className="bg-red-50 text-red-700 border-red-200 font-semibold text-xs gap-1 shrink-0">
+      <XCircle className="w-3 h-3" />
+      Cancelled
     </Badge>
   );
 }
 
-function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
-  const queryClient = useQueryClient();
-  const [emailSearch, setEmailSearch] = useState("");
-  const [searchedEmail, setSearchedEmail] = useState("");
+function daysBetween(checkIn: string, checkOut: string): number {
+  try {
+    const inDate = new Date(checkIn);
+    const outDate = new Date(checkOut);
+    const diff = outDate.getTime() - inDate.getTime();
+    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)));
+  } catch {
+    return 1;
+  }
+}
 
-  // Property Listings Query
-  const { data: propertyListings = [], isLoading: listingsLoading } = useQuery<
-    PropertyListing[]
-  >({
-    queryKey: ["admin-property-listings"],
+function formatDateDisplay(dateStr: string): string {
+  try {
+    return new Date(dateStr).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+interface BookingCardProps {
+  booking: Booking;
+  index: number;
+  actor: import("./backend").backendInterface | null;
+  onCancelled: () => void;
+  onViewDetails: (bookingId: bigint) => void;
+}
+
+function BookingCard({
+  booking,
+  index,
+  actor,
+  onCancelled,
+  onViewDetails,
+}: BookingCardProps) {
+  const { data: hotel, isLoading: hotelLoading } = useQuery<Hotel>({
+    queryKey: ["hotel", booking.hotelId.toString()],
+    queryFn: async () => {
+      if (!actor) throw new Error("Actor not ready");
+      return actor.getHotel(booking.hotelId);
+    },
+    enabled: !!actor,
+  });
+
+  const { mutate: cancelBooking, isPending: isCancelling } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      await actor.cancelBooking(booking.id);
+    },
+    onSuccess: () => {
+      toast.success("Booking cancelled successfully.");
+      onCancelled();
+    },
+    onError: () => {
+      toast.error("Failed to cancel booking. Please try again.");
+    },
+  });
+
+  const imageSrc = hotel
+    ? getHotelImageSrc(hotel.imageIndex)
+    : "/assets/generated/haridwar-hotel-1.dim_800x500.jpg";
+
+  const nights = daysBetween(booking.checkIn, booking.checkOut);
+  const totalPrice = hotel ? BigInt(nights) * hotel.pricePerNight : null;
+
+  const roomType = hotel?.description.includes(" | ")
+    ? hotel.description.split(" | ")[0]
+    : null;
+
+  const canCancel =
+    booking.status === Status.Confirmed || booking.status === Status.Pending;
+
+  return (
+    <motion.div
+      data-ocid={`my_bookings.booking_item.${index}`}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        delay: index * 0.06,
+        duration: 0.35,
+        ease: [0.22, 1, 0.36, 1],
+      }}
+      className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
+    >
+      <div className="flex flex-col sm:flex-row">
+        {/* Hotel Image */}
+        <div className="relative sm:w-[160px] sm:flex-shrink-0 h-[180px] sm:h-auto overflow-hidden">
+          {hotelLoading ? (
+            <div className="skeleton-shimmer w-full h-full" />
+          ) : (
+            <img
+              src={imageSrc}
+              alt={hotel?.name ?? "Hotel"}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent sm:bg-gradient-to-r sm:from-transparent sm:to-transparent" />
+          {/* Status overlay on mobile */}
+          <div className="absolute top-2 left-2 sm:hidden">
+            <BookingStatusBadge status={booking.status} />
+          </div>
+        </div>
+
+        {/* Booking Details */}
+        <div className="flex-1 min-w-0 p-4 sm:p-5">
+          {/* Header Row: ID + Status */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-widest font-mono">
+              #{booking.id.toString()}
+            </p>
+            <div className="hidden sm:block">
+              <BookingStatusBadge status={booking.status} />
+            </div>
+            {roomType && (
+              <Badge
+                variant="secondary"
+                className="text-[10px] px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200/70 font-semibold rounded-md"
+              >
+                {roomType}
+              </Badge>
+            )}
+          </div>
+
+          {/* Hotel Info */}
+          {hotelLoading ? (
+            <div className="space-y-1.5 mb-3">
+              <div className="skeleton-shimmer h-5 w-48 rounded" />
+              <div className="skeleton-shimmer h-4 w-28 rounded" />
+            </div>
+          ) : (
+            <div className="mb-3">
+              <h3 className="font-display font-bold text-base sm:text-lg text-foreground leading-tight line-clamp-1 mb-1">
+                {hotel?.name ?? "Hotel"}
+              </h3>
+              <div className="space-y-0.5">
+                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                  <span className="font-medium text-foreground">
+                    {hotel?.city ?? "—"}
+                  </span>
+                </p>
+                {hotel?.address && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Building2 className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{hotel.address}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Stay Details Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <div className="bg-muted/50 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                Check-in
+              </p>
+              <p className="font-semibold text-xs text-foreground">
+                {formatDateDisplay(booking.checkIn)}
+              </p>
+            </div>
+            <div className="bg-muted/50 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                Check-out
+              </p>
+              <p className="font-semibold text-xs text-foreground">
+                {formatDateDisplay(booking.checkOut)}
+              </p>
+            </div>
+            <div className="bg-muted/50 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                Guests
+              </p>
+              <p className="font-semibold text-xs text-foreground">
+                {Number(booking.guestCount)}{" "}
+                {Number(booking.guestCount) === 1 ? "guest" : "guests"}
+              </p>
+            </div>
+            <div className="bg-muted/50 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mb-0.5">
+                Nights
+              </p>
+              <p className="font-semibold text-xs text-foreground">
+                {nights} {nights === 1 ? "night" : "nights"}
+              </p>
+            </div>
+          </div>
+
+          {/* Price + Payment + Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
+            <div className="flex items-center gap-3">
+              {/* Total Price */}
+              {totalPrice !== null && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">
+                    Total
+                  </p>
+                  <p className="font-display font-extrabold text-base text-brand leading-tight">
+                    ₹{formatPrice(totalPrice)}
+                  </p>
+                  {hotel && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {nights} × ₹{formatPrice(hotel.pricePerNight)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* Pay at Hotel badge */}
+              <Badge className="bg-green-50 text-green-700 border-green-200 font-semibold text-[10px] gap-1 shrink-0">
+                <Banknote className="w-3 h-3" />
+                Pay at Hotel
+              </Badge>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                data-ocid={`my_bookings.view_details_button.${index}`}
+                size="sm"
+                variant="outline"
+                onClick={() => onViewDetails(booking.id)}
+                className="border-brand/40 text-brand hover:bg-brand/5 hover:border-brand font-semibold rounded-xl text-xs gap-1.5 transition-all duration-200"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                View Details
+              </Button>
+
+              {canCancel && (
+                <Button
+                  data-ocid={`my_bookings.cancel_button.${index}`}
+                  size="sm"
+                  variant="outline"
+                  disabled={isCancelling}
+                  onClick={() => cancelBooking()}
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-semibold rounded-xl text-xs gap-1.5 transition-all duration-200"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Cancelling...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3.5 h-3.5" />
+                      Cancel
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Booking Detail Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BookingDetailPageProps {
+  bookingId: bigint;
+  actor: import("./backend").backendInterface | null;
+  onBack: () => void;
+}
+
+function BookingDetailPage({
+  bookingId,
+  actor,
+  onBack,
+}: BookingDetailPageProps) {
+  const queryClient = useQueryClient();
+
+  const {
+    data: booking,
+    isLoading: bookingLoading,
+    isError: bookingError,
+  } = useQuery<Booking>({
+    queryKey: ["booking", bookingId.toString()],
+    queryFn: async () => {
+      if (!actor) throw new Error("Actor not ready");
+      return actor.getBooking(bookingId);
+    },
+    enabled: !!actor,
+  });
+
+  const {
+    data: hotel,
+    isLoading: hotelLoading,
+    isError: hotelError,
+  } = useQuery<Hotel>({
+    queryKey: ["hotel", booking?.hotelId.toString()],
+    queryFn: async () => {
+      if (!actor || !booking) throw new Error("Not ready");
+      return actor.getHotel(booking.hotelId);
+    },
+    enabled: !!actor && !!booking,
+  });
+
+  const { mutate: cancelBooking, isPending: isCancelling } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      await actor.cancelBooking(bookingId);
+    },
+    onSuccess: () => {
+      toast.success("Booking cancelled successfully.");
+      queryClient.invalidateQueries({
+        queryKey: ["booking", bookingId.toString()],
+      });
+      queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
+    },
+    onError: () => {
+      toast.error("Failed to cancel booking. Please try again.");
+    },
+  });
+
+  const isLoading = bookingLoading || hotelLoading;
+  const isError = bookingError || hotelError;
+
+  if (isLoading) {
+    return (
+      <motion.div
+        data-ocid="booking_detail.loading_state"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="fixed inset-0 z-50 bg-background overflow-y-auto"
+      >
+        {/* Header skeleton */}
+        <div className="sticky top-0 z-10 bg-brand shadow-header h-16 flex items-center px-6">
+          <div className="skeleton-shimmer h-8 w-32 rounded-lg opacity-50" />
+        </div>
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-5">
+          <div className="skeleton-shimmer h-[280px] w-full rounded-2xl" />
+          <div className="skeleton-shimmer h-20 w-full rounded-2xl" />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="skeleton-shimmer h-24 rounded-xl" />
+            <div className="skeleton-shimmer h-24 rounded-xl" />
+            <div className="skeleton-shimmer h-24 rounded-xl" />
+          </div>
+          <div className="skeleton-shimmer h-36 w-full rounded-2xl" />
+          <div className="skeleton-shimmer h-24 w-full rounded-2xl" />
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (isError || !booking || !hotel) {
+    return (
+      <motion.div
+        data-ocid="booking_detail.error_state"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center px-4"
+      >
+        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-5">
+          <AlertTriangle className="w-10 h-10 text-red-500" />
+        </div>
+        <h2 className="font-display text-2xl font-bold text-foreground mb-2 text-center">
+          Booking Not Found
+        </h2>
+        <p className="text-muted-foreground text-center mb-6 max-w-sm">
+          We couldn't load this booking. Please go back and try again.
+        </p>
+        <Button
+          data-ocid="booking_detail.back_button"
+          onClick={onBack}
+          className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Bookings
+        </Button>
+      </motion.div>
+    );
+  }
+
+  const nights = daysBetween(booking.checkIn, booking.checkOut);
+  const totalPrice = BigInt(nights) * hotel.pricePerNight;
+  const roomType = hotel.description.includes(" | ")
+    ? hotel.description.split(" | ")[0]
+    : null;
+
+  const canCancel =
+    booking.status === Status.Confirmed || booking.status === Status.Pending;
+
+  return (
+    <motion.div
+      data-ocid="booking_detail.panel"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="fixed inset-0 z-50 bg-background overflow-y-auto"
+    >
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-brand shadow-header">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 rounded-xl p-2">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <span className="font-display text-lg font-extrabold text-white tracking-tight block leading-none">
+                  Booking Details
+                </span>
+                <span className="text-white/70 text-xs font-medium">
+                  HIDESTAY
+                </span>
+              </div>
+            </div>
+            <Button
+              data-ocid="booking_detail.back_button"
+              onClick={onBack}
+              size="sm"
+              className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Back to Bookings</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-6 pb-16">
+        {/* Hotel Image */}
+        <div
+          data-ocid="booking_detail.hotel_image"
+          className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-lg"
+        >
+          <img
+            src={getHotelImageSrc(hotel.imageIndex)}
+            alt={hotel.name}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+          {/* Hotel name overlay */}
+          <div className="absolute bottom-0 left-0 right-0 p-5">
+            <h2 className="font-display text-2xl font-extrabold text-white leading-tight mb-1">
+              {hotel.name}
+            </h2>
+            <div className="flex items-center gap-2 text-white/85 text-sm">
+              <MapPin className="w-4 h-4 flex-shrink-0" />
+              <span className="font-medium">{hotel.city}</span>
+              {hotel.address && (
+                <>
+                  <span className="text-white/50">·</span>
+                  <span className="line-clamp-1 text-white/75">
+                    {hotel.address}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Booking ID + Status Card */}
+        <div
+          data-ocid="booking_detail.booking_id_card"
+          className="bg-card border border-border rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
+          <div>
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-1">
+              Booking ID
+            </p>
+            <p className="font-display text-3xl font-extrabold text-brand leading-none">
+              #{booking.id.toString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Created:{" "}
+              {new Date(Number(booking.created)).toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+          <div className="flex flex-col items-start sm:items-end gap-2">
+            <BookingStatusBadge status={booking.status} />
+            {roomType && (
+              <Badge
+                variant="secondary"
+                className="text-[11px] px-2.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200/70 font-semibold rounded-md"
+              >
+                {roomType}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Stay Details Grid */}
+        <div>
+          <h3 className="font-display font-bold text-base text-foreground mb-3 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-brand" />
+            Stay Details
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="bg-card border border-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                Check-in
+              </p>
+              <p className="font-display font-bold text-foreground text-sm leading-snug">
+                {formatDateDisplay(booking.checkIn)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                12:00 PM
+              </p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                Check-out
+              </p>
+              <p className="font-display font-bold text-foreground text-sm leading-snug">
+                {formatDateDisplay(booking.checkOut)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                11:00 AM
+              </p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                Duration
+              </p>
+              <p className="font-display font-bold text-foreground text-sm leading-snug">
+                {nights} {nights === 1 ? "night" : "nights"}
+              </p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                Guests
+              </p>
+              <p className="font-display font-bold text-foreground text-sm leading-snug">
+                {Number(booking.guestCount)}{" "}
+                {Number(booking.guestCount) === 1 ? "guest" : "guests"}
+              </p>
+            </div>
+            {roomType && (
+              <div className="bg-card border border-border rounded-xl p-4">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                  Room Type
+                </p>
+                <p className="font-display font-bold text-foreground text-sm leading-snug">
+                  {roomType}
+                </p>
+              </div>
+            )}
+            <div className="bg-card border border-border rounded-xl p-4">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                Hotel Stars
+              </p>
+              <div className="flex items-center gap-0.5 mt-0.5">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Star
+                    key={i}
+                    className={`w-3.5 h-3.5 ${i <= Number(hotel.starRating) ? "star-gold fill-current" : "text-muted-foreground/30"}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pricing Breakdown */}
+        <div>
+          <h3 className="font-display font-bold text-base text-foreground mb-3 flex items-center gap-2">
+            <Banknote className="w-4 h-4 text-green-600" />
+            Pricing Breakdown
+          </h3>
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="divide-y divide-border/60">
+              <div className="flex items-center justify-between px-5 py-3.5">
+                <span className="text-sm text-muted-foreground">
+                  Price per night
+                </span>
+                <span className="font-semibold text-sm text-foreground">
+                  ₹{formatPrice(hotel.pricePerNight)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-3.5">
+                <span className="text-sm text-muted-foreground">
+                  Number of nights
+                </span>
+                <span className="font-semibold text-sm text-foreground">
+                  {nights}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-4 bg-green-50">
+                <span className="font-display font-bold text-base text-foreground">
+                  Total Amount
+                </span>
+                <span className="font-display font-extrabold text-2xl text-green-700">
+                  ₹{formatPrice(totalPrice)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Mode */}
+        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-4">
+          <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Banknote className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-display font-bold text-green-800 text-base leading-tight">
+              Pay at Hotel — No Advance Required
+            </p>
+            <p className="text-green-700 text-sm mt-0.5">
+              Payment mode: <strong>Pay at Hotel</strong>. No online payment
+              needed.
+            </p>
+          </div>
+        </div>
+
+        {/* Guest Details */}
+        <div>
+          <h3 className="font-display font-bold text-base text-foreground mb-3 flex items-center gap-2">
+            <User className="w-4 h-4 text-brand" />
+            Guest Details
+          </h3>
+          <div className="bg-card border border-border rounded-2xl divide-y divide-border/60">
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <User className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">
+                  Name
+                </p>
+                <p className="font-semibold text-sm text-foreground">
+                  {booking.guestName}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">
+                  Email
+                </p>
+                <p className="font-semibold text-sm text-foreground">
+                  {booking.guestEmail}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 px-5 py-3.5">
+              <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">
+                  Phone
+                </p>
+                <p className="font-semibold text-sm text-foreground">
+                  {booking.phone}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Cancel Action */}
+        {canCancel && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
+            <h3 className="font-display font-bold text-base text-red-800 mb-1">
+              Cancel This Booking
+            </h3>
+            <p className="text-red-700 text-sm mb-4">
+              Cancellations within 24 hours of check-in may incur a one-night
+              charge. After cancellation, this action cannot be undone.
+            </p>
+            <Button
+              data-ocid="booking_detail.cancel_button"
+              variant="outline"
+              disabled={isCancelling}
+              onClick={() => cancelBooking()}
+              className="border-red-300 text-red-700 hover:bg-red-100 hover:text-red-800 font-semibold rounded-xl gap-2"
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-4 h-4" />
+                  Cancel Booking
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function MyBookingsPage({ open, onClose, actor }: MyBookingsPageProps) {
+  const queryClient = useQueryClient();
+  const [selectedBookingId, setSelectedBookingId] = useState<bigint | null>(
+    null,
+  );
+
+  const {
+    data: rawBookings = [],
+    isLoading,
+    isError,
+  } = useQuery<Booking[]>({
+    queryKey: ["my-bookings"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getPropertyListings();
+      return actor.getMyBookings();
     },
-    enabled: !!actor && open,
+    enabled: open && !!actor,
   });
 
-  const pendingCount = propertyListings.filter(
-    (l) => l.status === PropertyListingStatus.PendingApproval,
-  ).length;
+  // Sort latest first on the frontend
+  const bookings = [...rawBookings].sort((a, b) =>
+    Number(b.created - a.created),
+  );
 
-  // Approve mutation
-  const { mutate: approveListing } = useMutation({
-    mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      await actor.approvePropertyListing(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-property-listings"] });
-      queryClient.invalidateQueries({ queryKey: ["pending-listings-count"] });
-      toast.success("Property approved successfully!");
-    },
-    onError: () => {
-      toast.error("Failed to approve. Please try again.");
-    },
-  });
-
-  // Reject mutation
-  const { mutate: rejectListing } = useMutation({
-    mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      await actor.rejectPropertyListing(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-property-listings"] });
-      queryClient.invalidateQueries({ queryKey: ["pending-listings-count"] });
-      toast.success("Property rejected.");
-    },
-    onError: () => {
-      toast.error("Failed to reject. Please try again.");
-    },
-  });
-
-  // Bookings
-  const {
-    data: bookings = [],
-    isLoading: bookingsLoading,
-    isFetching: bookingsFetching,
-  } = useQuery<Booking[]>({
-    queryKey: ["admin-bookings", searchedEmail],
-    queryFn: async () => {
-      if (!actor || !searchedEmail) return [];
-      return actor.getBookingsByEmail(searchedEmail);
-    },
-    enabled: !!actor && !!searchedEmail,
-  });
-
-  const handleSearch = () => {
-    if (emailSearch.trim()) {
-      setSearchedEmail(emailSearch.trim());
-    }
+  const handleCancelled = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-bookings"] });
   };
 
-  const isLoadingBookings = bookingsLoading || bookingsFetching;
-
   if (!open) return null;
+
+  // Show booking detail page when a booking is selected
+  if (selectedBookingId !== null) {
+    return (
+      <BookingDetailPage
+        bookingId={selectedBookingId}
+        actor={actor}
+        onBack={() => setSelectedBookingId(null)}
+      />
+    );
+  }
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          data-ocid="admin.panel"
+          data-ocid="my_bookings.panel"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 bg-background overflow-y-auto"
         >
-          {/* Admin Header */}
+          {/* Header */}
           <div className="sticky top-0 z-10 bg-brand shadow-header">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                 <div className="flex items-center gap-3">
                   <div className="bg-white/20 rounded-xl p-2">
-                    <Settings className="w-5 h-5 text-white" />
+                    <BookOpen className="w-5 h-5 text-white" />
                   </div>
                   <div>
                     <span className="font-display text-lg font-extrabold text-white tracking-tight block leading-none">
-                      Super Admin Panel
+                      My Bookings
                     </span>
                     <span className="text-white/70 text-xs font-medium">
                       HIDESTAY
@@ -1420,7 +2697,7 @@ function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
                   </div>
                 </div>
                 <Button
-                  data-ocid="admin.close_button"
+                  data-ocid="my_bookings.close_button"
                   onClick={onClose}
                   size="sm"
                   className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
@@ -1432,373 +2709,112 @@ function AdminPanel({ open, onClose, actor }: AdminPanelProps) {
             </div>
           </div>
 
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-            {/* ── Property Submissions Section */}
-            <section data-ocid="admin.property_submissions.section">
-              <div className="flex items-center gap-3 mb-2">
-                <h2 className="font-display text-2xl font-bold text-foreground">
-                  Property Submissions
-                </h2>
-                {pendingCount > 0 && (
-                  <span className="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                    {pendingCount} pending
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground text-sm mb-5">
-                Review hotel listing applications from property owners.
+          {/* Content */}
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Page Title */}
+            <div className="mb-6">
+              <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground mb-1">
+                Your Reservations
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                All bookings linked to your account, sorted by latest first.
               </p>
+            </div>
 
-              {listingsLoading ? (
-                <div
-                  data-ocid="admin.property_submissions.loading_state"
-                  className="text-center py-8"
-                >
-                  <Loader2 className="w-8 h-8 animate-spin text-brand mx-auto" />
-                  <p className="text-muted-foreground text-sm mt-2">
-                    Loading submissions...
-                  </p>
-                </div>
-              ) : propertyListings.length === 0 ? (
-                <div
-                  data-ocid="admin.property_submissions.empty_state"
-                  className="text-center py-12 bg-muted/30 rounded-2xl border border-dashed border-border"
-                >
-                  <Building2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-foreground font-semibold">
-                    No submissions yet
-                  </p>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    Property listing applications will appear here.
-                  </p>
-                </div>
-              ) : (
-                <div
-                  data-ocid="admin.property_submissions.list"
-                  className="space-y-3"
-                >
-                  {propertyListings.map((listing, idx) => (
-                    <motion.div
-                      key={listing.id.toString()}
-                      data-ocid={`admin.property_submissions.item.${idx + 1}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.04 }}
-                      className="bg-card border border-border rounded-xl p-5"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <h3 className="font-display font-bold text-foreground text-base leading-tight">
-                              {listing.hotelName}
-                            </h3>
-                            <Badge
-                              variant="secondary"
-                              className="text-[11px] px-2 py-0 bg-teal-50 text-teal-700 border border-teal-200/70 font-semibold shrink-0"
-                            >
-                              {listing.roomType}
-                            </Badge>
-                            <Badge
-                              variant="secondary"
-                              className="text-[11px] px-2 py-0 bg-brand/10 text-brand border-brand/20 font-semibold shrink-0 capitalize"
-                            >
-                              {listing.subscriptionPlan}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 shrink-0" />
-                            {listing.city}
-                          </p>
-                        </div>
-                        <div className="shrink-0">
-                          <PropertyStatusBadge status={listing.status} />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Owner</p>
-                          <p className="font-semibold truncate">
-                            {listing.ownerName}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Phone</p>
-                          <p className="font-semibold">{listing.ownerPhone}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Email</p>
-                          <p className="font-semibold truncate">
-                            {listing.ownerEmail}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">
-                            Price / Night
-                          </p>
-                          <p className="font-display font-bold text-brand">
-                            ₹{formatPrice(listing.pricePerNight)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/60">
-                        <p className="text-xs text-muted-foreground">
-                          Submitted:{" "}
-                          {new Date(
-                            Number(listing.submittedAt),
-                          ).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </p>
-                        {listing.status ===
-                          PropertyListingStatus.PendingApproval && (
-                          <div className="flex gap-2">
-                            <Button
-                              data-ocid={`admin.property_submissions.approve_button.${idx + 1}`}
-                              size="sm"
-                              onClick={() => approveListing(listing.id)}
-                              className="bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-xs gap-1.5"
-                            >
-                              <ThumbsUp className="w-3.5 h-3.5" />
-                              Approve
-                            </Button>
-                            <Button
-                              data-ocid={`admin.property_submissions.reject_button.${idx + 1}`}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => rejectListing(listing.id)}
-                              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-semibold rounded-lg text-xs gap-1.5"
-                            >
-                              <ThumbsDown className="w-3.5 h-3.5" />
-                              Reject
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <Separator />
-
-            {/* ── Bookings Section */}
-            <section>
-              <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-                Guest Bookings Lookup
-              </h2>
-              <p className="text-muted-foreground text-sm mb-5">
-                Enter a guest email to look up their bookings.
-              </p>
-
-              <div className="flex gap-3 mb-6">
-                <div className="relative flex-1">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    data-ocid="admin.bookings_email_input"
-                    type="email"
-                    placeholder="guest@example.com"
-                    value={emailSearch}
-                    onChange={(e) => setEmailSearch(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    className="pl-9 rounded-xl border-input"
-                  />
-                </div>
-                <Button
-                  data-ocid="admin.bookings_search_button"
-                  onClick={handleSearch}
-                  className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-6"
-                >
-                  <Search className="w-4 h-4 mr-2" />
-                  Search
-                </Button>
-              </div>
-
-              {/* Bookings List */}
-              {isLoadingBookings ? (
-                <div
-                  data-ocid="admin.bookings.loading_state"
-                  className="text-center py-8"
-                >
-                  <Loader2 className="w-8 h-8 animate-spin text-brand mx-auto" />
-                  <p className="text-muted-foreground text-sm mt-2">
-                    Loading bookings...
-                  </p>
-                </div>
-              ) : searchedEmail && !isLoadingBookings ? (
-                <div data-ocid="admin.bookings_list">
-                  {bookings.length === 0 ? (
-                    <div
-                      data-ocid="admin.bookings.empty_state"
-                      className="text-center py-10 bg-muted/40 rounded-2xl"
-                    >
-                      <Search className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-foreground font-semibold">
-                        No bookings found
-                      </p>
-                      <p className="text-muted-foreground text-sm mt-1">
-                        No bookings for <strong>{searchedEmail}</strong>
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {bookings.map((booking, idx) => (
-                        <motion.div
-                          key={booking.id.toString()}
-                          data-ocid={`admin.booking_item.${idx + 1}`}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.05 }}
-                          className="bg-card border border-border rounded-xl p-4"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="font-display font-bold text-foreground">
-                                Booking #{booking.id.toString()}
-                              </p>
-                              <p className="text-sm text-muted-foreground mt-0.5">
-                                {booking.guestName} · {booking.phone}
-                              </p>
-                            </div>
-                            <Badge className="bg-green-50 text-green-700 border-green-200 shrink-0">
-                              Pay at Hotel
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-sm">
-                            <div>
-                              <p className="text-xs text-muted-foreground">
-                                Check-in
-                              </p>
-                              <p className="font-semibold">{booking.checkIn}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">
-                                Check-out
-                              </p>
-                              <p className="font-semibold">
-                                {booking.checkOut}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">
-                                Guests
-                              </p>
-                              <p className="font-semibold">
-                                {booking.guestCount.toString()}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">
-                                Hotel ID
-                              </p>
-                              <p className="font-semibold">
-                                #{booking.hotelId.toString()}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {!searchedEmail && (
-                <div className="text-center py-10 bg-muted/30 rounded-2xl border border-dashed border-border">
-                  <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-muted-foreground text-sm">
-                    Enter an email address to search bookings
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <Separator />
-
-            {/* Subscription Plans Section */}
-            <section>
-              <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-                Choose Your Subscription Plan
-              </h2>
-              <p className="text-muted-foreground text-sm mb-6">
-                List your hotel on HIDESTAY and reach budget travelers across
-                Bihar and nearby states.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {SUBSCRIPTION_PLANS.map((plan) => (
-                  <motion.div
-                    key={plan.id}
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      delay: SUBSCRIPTION_PLANS.indexOf(plan) * 0.1,
-                    }}
-                    className={`relative rounded-2xl border-2 ${plan.color} p-5 flex flex-col gap-4 ${plan.popular ? "shadow-lg" : ""}`}
+            {/* Loading State */}
+            {isLoading && (
+              <div data-ocid="my_bookings.loading_state" className="space-y-4">
+                {(["sk1", "sk2", "sk3"] as const).map((k) => (
+                  <div
+                    key={k}
+                    className="bg-card border border-border rounded-2xl overflow-hidden"
                   >
-                    {plan.popular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <span className="bg-brand text-white text-xs font-bold px-3 py-1 rounded-full">
-                          Most Popular
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center ${plan.badgeColor}`}
-                      >
-                        {plan.icon}
-                      </div>
-                      <div>
-                        <h3 className="font-display font-bold text-lg text-foreground">
-                          {plan.name}
-                        </h3>
-                        <div className="flex items-baseline gap-0.5">
-                          <span className="text-2xl font-display font-extrabold text-foreground">
-                            {plan.price}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {plan.period}
-                          </span>
+                    <div className="flex flex-col sm:flex-row">
+                      <div className="skeleton-shimmer sm:w-[160px] h-[140px] sm:h-auto shrink-0" />
+                      <div className="flex-1 p-5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="skeleton-shimmer h-4 w-24 rounded" />
+                          <div className="skeleton-shimmer h-5 w-16 rounded-full" />
+                        </div>
+                        <div className="skeleton-shimmer h-6 w-3/4 rounded" />
+                        <div className="skeleton-shimmer h-4 w-1/3 rounded" />
+                        <div className="grid grid-cols-4 gap-2 pt-2">
+                          <div className="skeleton-shimmer h-14 rounded-xl" />
+                          <div className="skeleton-shimmer h-14 rounded-xl" />
+                          <div className="skeleton-shimmer h-14 rounded-xl" />
+                          <div className="skeleton-shimmer h-14 rounded-xl" />
                         </div>
                       </div>
                     </div>
-
-                    <ul className="space-y-2 flex-1">
-                      {plan.features.map((feature) => (
-                        <li
-                          key={feature}
-                          className="flex items-start gap-2 text-sm text-foreground"
-                        >
-                          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <Button
-                      onClick={() =>
-                        toast.info(
-                          `Contact us at hidestay@example.com to subscribe to ${plan.name} plan.`,
-                        )
-                      }
-                      className={`w-full font-semibold rounded-xl ${
-                        plan.popular
-                          ? "bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white"
-                          : "bg-muted hover:bg-muted/80 text-foreground"
-                      }`}
-                    >
-                      Contact Us
-                    </Button>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
-            </section>
+            )}
+
+            {/* Error State */}
+            {isError && (
+              <div
+                data-ocid="my_bookings.error_state"
+                className="text-center py-16 bg-muted/30 rounded-2xl border border-dashed border-border"
+              >
+                <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+                <p className="text-foreground font-semibold">
+                  Failed to load bookings
+                </p>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Please try closing and reopening the panel.
+                </p>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !isError && bookings.length === 0 && (
+              <motion.div
+                data-ocid="my_bookings.empty_state"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-20 px-6"
+              >
+                <div className="w-20 h-20 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-5">
+                  <BookOpen className="w-9 h-9 text-brand" />
+                </div>
+                <h3 className="font-display text-xl font-bold text-foreground mb-2">
+                  No bookings yet
+                </h3>
+                <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
+                  Your reservations will appear here after you book a hotel.
+                  Start exploring hotels and reserve your stay!
+                </p>
+                <Button
+                  onClick={onClose}
+                  className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8"
+                >
+                  Browse Hotels
+                </Button>
+              </motion.div>
+            )}
+
+            {/* Bookings List */}
+            {!isLoading && !isError && bookings.length > 0 && (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {bookings.length}{" "}
+                  {bookings.length === 1 ? "booking" : "bookings"} found
+                </p>
+                <div data-ocid="my_bookings.list" className="space-y-4">
+                  {bookings.map((booking, idx) => (
+                    <BookingCard
+                      key={booking.id.toString()}
+                      booking={booking}
+                      index={idx + 1}
+                      actor={actor}
+                      onCancelled={handleCancelled}
+                      onViewDetails={(id) => setSelectedBookingId(id)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </motion.div>
       )}
@@ -2044,7 +3060,11 @@ interface HeaderProps {
   onLoginClick: () => void;
   onListPropertyClick: () => void;
   onAdminClick: () => void;
+  onMyBookingsClick: () => void;
+  onOwnerDashboardClick: () => void;
+  onLogoClick: () => void;
   isAdmin: boolean;
+  isOwner: boolean;
   pendingListingsCount: number;
 }
 
@@ -2052,7 +3072,11 @@ function Header({
   onLoginClick,
   onListPropertyClick,
   onAdminClick,
+  onMyBookingsClick,
+  onOwnerDashboardClick,
+  onLogoClick,
   isAdmin,
+  isOwner,
   pendingListingsCount,
 }: HeaderProps) {
   const { identity, clear } = useInternetIdentity();
@@ -2063,9 +3087,11 @@ function Header({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div
+          <button
+            type="button"
             data-ocid="header.logo"
-            className="flex items-center gap-2.5 cursor-pointer"
+            className="flex items-center gap-2.5 cursor-pointer bg-transparent border-0 p-0"
+            onClick={onLogoClick}
           >
             <div className="bg-white/20 rounded-xl p-2">
               <Home className="w-5 h-5 text-white" />
@@ -2075,10 +3101,10 @@ function Header({
                 HIDESTAY
               </span>
               <span className="text-white/60 text-[9px] font-semibold tracking-widest uppercase hidden sm:block">
-                Bihar & Nearby States
+                Uttarakhand Hill Stations
               </span>
             </div>
-          </div>
+          </button>
 
           {/* Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
@@ -2092,6 +3118,32 @@ function Header({
               <Building2 className="w-4 h-4 mr-1.5" />
               List Your Property
             </Button>
+
+            {isLoggedIn && (
+              <Button
+                data-ocid="header.my_bookings_button"
+                onClick={onMyBookingsClick}
+                size="sm"
+                variant="outline"
+                className="border-white/50 text-white hover:bg-white/10 hover:text-white bg-transparent font-semibold rounded-lg text-sm gap-1.5"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">My Bookings</span>
+              </Button>
+            )}
+
+            {isOwner && (
+              <Button
+                data-ocid="header.owner_dashboard_button"
+                onClick={onOwnerDashboardClick}
+                size="sm"
+                variant="outline"
+                className="border-white/50 text-white hover:bg-white/10 hover:text-white bg-transparent font-semibold rounded-lg text-sm gap-1.5"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden sm:inline">Owner Dashboard</span>
+              </Button>
+            )}
 
             {isAdmin && (
               <Button
@@ -2144,13 +3196,11 @@ function Header({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CITY_CHIPS = [
-  "Patna",
-  "Gaya",
-  "Muzaffarpur",
-  "Ranchi",
-  "Varanasi",
-  "Lucknow",
-  "Kolkata",
+  "Haridwar",
+  "Rishikesh",
+  "Mussoorie",
+  "Dhanaulti",
+  "Dehradun",
 ];
 
 interface HeroSectionProps {
@@ -2200,15 +3250,16 @@ function HeroSection({
         >
           <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm text-white/90 text-xs font-semibold tracking-widest uppercase px-4 py-1.5 rounded-full mb-5 border border-white/20">
             <MapPin className="w-3 h-3 text-white/80" />
-            Bihar &amp; Nearby States
+            Uttarakhand Hill Stations
           </div>
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-4 leading-[1.05] tracking-tight">
-            Find your
+            Book Budget &amp; Hill View
             <br className="hidden sm:block" />{" "}
-            <span className="text-white/90">perfect stay</span>
+            <span className="text-white/90">Hotels in Uttarakhand</span>
           </h1>
           <p className="text-white/75 text-base sm:text-lg font-medium max-w-xl mx-auto">
-            Affordable stays in Bihar, Jharkhand, UP &amp; West Bengal
+            Affordable stays in Haridwar, Rishikesh, Mussoorie, Dhanaulti &amp;
+            Dehradun
           </p>
         </motion.div>
 
@@ -2237,7 +3288,7 @@ function HeroSection({
                   id="search-city"
                   data-ocid="search.city_input"
                   type="text"
-                  placeholder="e.g. Patna, Gaya, Ranchi"
+                  placeholder="e.g. Haridwar, Rishikesh, Mussoorie"
                   value={searchParams.city}
                   onChange={(e) =>
                     onSearchChange({ ...searchParams, city: e.target.value })
@@ -2385,8 +3436,8 @@ function TrustStrip() {
     },
     {
       icon: <MapPin className="w-5 h-5 text-brand" />,
-      value: "Bihar+",
-      label: "Nearby States",
+      value: "Uttarakhand",
+      label: "& Hill Stations",
     },
     {
       icon: <Banknote className="w-5 h-5 text-brand" />,
@@ -2516,11 +3567,18 @@ export default function App() {
     amenities?: string[];
   }>({});
 
+  const [selectedHotelId, setSelectedHotelId] = useState<bigint | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
-  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [superAdminOpen, setSuperAdminOpen] = useState(false);
+  const [myBookingsPanelOpen, setMyBookingsPanelOpen] = useState(false);
+  const [ownerDashboardOpen, setOwnerDashboardOpen] = useState(false);
+
+  // ── Auth check
+  const { identity } = useInternetIdentity();
+  const isLoggedIn = !!identity;
 
   // ── Admin check
   const { data: isAdmin = false } = useQuery<boolean>({
@@ -2531,6 +3589,9 @@ export default function App() {
     },
     enabled: !!actor && !actorLoading,
   });
+
+  // ── Owner check
+  const { isOwner } = useIsOwner(isLoggedIn && !!actor && !actorLoading);
 
   // ── Pending listings count (admin only)
   const { data: pendingListingsCount = 0 } = useQuery<number>({
@@ -2595,6 +3656,11 @@ export default function App() {
     setBookingModalOpen(true);
   };
 
+  const handleViewDetails = (hotel: Hotel) => {
+    setSelectedHotelId(hotel.id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   // City chip handler: update search params & trigger search
   const handleCityChipSearch = useCallback(
     (city: string) => {
@@ -2611,178 +3677,223 @@ export default function App() {
     ? `Hotels in ${queryParams.city}`
     : "Popular Hotels";
 
+  const handleBackFromDetail = () => {
+    setSelectedHotelId(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col font-body">
       <Toaster position="top-right" richColors />
 
-      {/* Header */}
+      {/* Header — always visible */}
       <Header
         onLoginClick={() => setLoginModalOpen(true)}
         onListPropertyClick={() => setListPropertyModalOpen(true)}
-        onAdminClick={() => setAdminPanelOpen(true)}
+        onAdminClick={() => setSuperAdminOpen(true)}
+        onMyBookingsClick={() => setMyBookingsPanelOpen(true)}
+        onOwnerDashboardClick={() => setOwnerDashboardOpen(true)}
+        onLogoClick={handleBackFromDetail}
         isAdmin={isAdmin}
+        isOwner={isOwner}
         pendingListingsCount={pendingListingsCount}
       />
 
-      {/* Hero */}
-      <HeroSection
-        searchParams={searchParams}
-        onSearchChange={setSearchParams}
-        onSearch={handleSearch}
-        onCityChip={handleCityChipSearch}
-        isLoading={isSearching}
-      />
+      {/* Hotel Detail Page */}
+      <AnimatePresence mode="wait">
+        {selectedHotelId !== null ? (
+          <motion.div
+            key="hotel-detail"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.3 }}
+            className="flex-1"
+          >
+            <HotelDetailPage
+              hotelId={selectedHotelId}
+              actor={actor}
+              searchParams={searchParams}
+              onBack={handleBackFromDetail}
+              onBookNow={handleBookNow}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="search-results"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex-1 flex flex-col"
+          >
+            {/* Hero */}
+            <HeroSection
+              searchParams={searchParams}
+              onSearchChange={setSearchParams}
+              onSearch={handleSearch}
+              onCityChip={handleCityChipSearch}
+              isLoading={isSearching}
+            />
 
-      {/* Trust Strip */}
-      <TrustStrip />
+            {/* Trust Strip */}
+            <TrustStrip />
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        {/* Mobile Filters */}
-        <MobileFilterPanel
-          filters={filters}
-          onFiltersChange={setFilters}
-          onApply={handleApplyFilters}
-          onReset={handleResetFilters}
-        />
-
-        <div className="flex gap-8">
-          {/* Desktop Sidebar */}
-          <aside className="hidden lg:block w-72 flex-shrink-0">
-            <div className="sticky top-24">
-              <FilterSidebar
+            {/* Main Content */}
+            <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+              {/* Mobile Filters */}
+              <MobileFilterPanel
                 filters={filters}
                 onFiltersChange={setFilters}
                 onApply={handleApplyFilters}
                 onReset={handleResetFilters}
               />
-            </div>
-          </aside>
 
-          {/* Hotel Grid */}
-          <section className="flex-1 min-w-0">
-            {/* Section Heading */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="font-display text-2xl font-bold text-foreground">
-                  {sectionHeading}
-                </h2>
-                {!isSearching && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {hotels.length}{" "}
-                    {hotels.length === 1 ? "property" : "properties"} found
+              <div className="flex gap-8">
+                {/* Desktop Sidebar */}
+                <aside className="hidden lg:block w-72 flex-shrink-0">
+                  <div className="sticky top-24">
+                    <FilterSidebar
+                      filters={filters}
+                      onFiltersChange={setFilters}
+                      onApply={handleApplyFilters}
+                      onReset={handleResetFilters}
+                    />
+                  </div>
+                </aside>
+
+                {/* Hotel Grid */}
+                <section className="flex-1 min-w-0">
+                  {/* Section Heading */}
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="font-display text-2xl font-bold text-foreground">
+                        {sectionHeading}
+                      </h2>
+                      {!isSearching && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {hotels.length}{" "}
+                          {hotels.length === 1 ? "property" : "properties"}{" "}
+                          found
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Loading State */}
+                  {isSearching && (
+                    <div
+                      data-ocid="hotel.loading_state"
+                      className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5"
+                    >
+                      {(
+                        ["sk1", "sk2", "sk3", "sk4", "sk5", "sk6"] as const
+                      ).map((k) => (
+                        <HotelCardSkeleton key={k} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {!isSearching && hotels.length === 0 && (
+                    <motion.div
+                      data-ocid="hotel.empty_state"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-center py-20 px-4"
+                    >
+                      <div className="w-20 h-20 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-5">
+                        <Search className="w-9 h-9 text-brand" />
+                      </div>
+                      <h3 className="font-display text-xl font-bold text-foreground mb-2">
+                        No hotels found
+                      </h3>
+                      <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
+                        We couldn't find any hotels matching your search. Try
+                        Haridwar, Rishikesh, Mussoorie or other hill stations.
+                      </p>
+                      <Button
+                        onClick={() => {
+                          setSearchParams((p) => ({ ...p, city: "" }));
+                          setFilters({
+                            minPrice: "",
+                            maxPrice: "",
+                            amenities: [],
+                          });
+                          setQueryParams({});
+                        }}
+                        className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl"
+                      >
+                        View all hotels
+                      </Button>
+                    </motion.div>
+                  )}
+
+                  {/* Hotel Grid */}
+                  {!isSearching && hotels.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {hotels.map((hotel, i) => (
+                        <HotelCard
+                          key={hotel.id.toString()}
+                          hotel={hotel}
+                          index={i + 1}
+                          onViewDetails={handleViewDetails}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="bg-card border-t border-border mt-auto">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-brand rounded-lg p-1.5">
+                      <Home className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <span className="font-display font-bold text-lg text-foreground block leading-none">
+                        HIDESTAY
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Uttarakhand Hill Stations
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+                    <span className="hover:text-brand transition-colors cursor-pointer">
+                      About Us
+                    </span>
+                    <span className="hover:text-brand transition-colors cursor-pointer">
+                      Privacy Policy
+                    </span>
+                    <span className="hover:text-brand transition-colors cursor-pointer">
+                      Terms of Service
+                    </span>
+                    <span className="hover:text-brand transition-colors cursor-pointer">
+                      Contact
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground text-center sm:text-right">
+                    © {new Date().getFullYear()}. Built with ♥ using{" "}
+                    <a
+                      href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand hover:underline font-medium"
+                    >
+                      caffeine.ai
+                    </a>
                   </p>
-                )}
-              </div>
-            </div>
-
-            {/* Loading State */}
-            {isSearching && (
-              <div
-                data-ocid="hotel.loading_state"
-                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5"
-              >
-                {(["sk1", "sk2", "sk3", "sk4", "sk5", "sk6"] as const).map(
-                  (k) => (
-                    <HotelCardSkeleton key={k} />
-                  ),
-                )}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!isSearching && hotels.length === 0 && (
-              <motion.div
-                data-ocid="hotel.empty_state"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center py-20 px-4"
-              >
-                <div className="w-20 h-20 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-5">
-                  <Search className="w-9 h-9 text-brand" />
                 </div>
-                <h3 className="font-display text-xl font-bold text-foreground mb-2">
-                  No hotels found
-                </h3>
-                <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
-                  We couldn't find any hotels matching your search. Try Patna,
-                  Gaya, Ranchi or other cities.
-                </p>
-                <Button
-                  onClick={() => {
-                    setSearchParams((p) => ({ ...p, city: "" }));
-                    setFilters({ minPrice: "", maxPrice: "", amenities: [] });
-                    setQueryParams({});
-                  }}
-                  className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl"
-                >
-                  View all hotels
-                </Button>
-              </motion.div>
-            )}
-
-            {/* Hotel Grid */}
-            {!isSearching && hotels.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {hotels.map((hotel, i) => (
-                  <HotelCard
-                    key={hotel.id.toString()}
-                    hotel={hotel}
-                    index={i + 1}
-                    onBookNow={handleBookNow}
-                  />
-                ))}
               </div>
-            )}
-          </section>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-card border-t border-border mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="bg-brand rounded-lg p-1.5">
-                <Home className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <span className="font-display font-bold text-lg text-foreground block leading-none">
-                  HIDESTAY
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Bihar & Nearby States
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-              <span className="hover:text-brand transition-colors cursor-pointer">
-                About Us
-              </span>
-              <span className="hover:text-brand transition-colors cursor-pointer">
-                Privacy Policy
-              </span>
-              <span className="hover:text-brand transition-colors cursor-pointer">
-                Terms of Service
-              </span>
-              <span className="hover:text-brand transition-colors cursor-pointer">
-                Contact
-              </span>
-            </div>
-            <p className="text-sm text-muted-foreground text-center sm:text-right">
-              © {new Date().getFullYear()}. Built with ♥ using{" "}
-              <a
-                href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-brand hover:underline font-medium"
-              >
-                caffeine.ai
-              </a>
-            </p>
-          </div>
-        </div>
-      </footer>
+            </footer>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Booking Modal */}
       <BookingModal
@@ -2806,11 +3917,25 @@ export default function App() {
         actor={actor}
       />
 
-      {/* Admin Panel */}
-      <AdminPanel
-        open={adminPanelOpen}
-        onClose={() => setAdminPanelOpen(false)}
+      {/* Super Admin Panel (replaces old AdminPanel) */}
+      <SuperAdminPanel
+        open={superAdminOpen}
+        onClose={() => setSuperAdminOpen(false)}
         actor={actor}
+        isAdmin={isAdmin}
+      />
+
+      {/* My Bookings Panel */}
+      <MyBookingsPage
+        open={myBookingsPanelOpen}
+        onClose={() => setMyBookingsPanelOpen(false)}
+        actor={actor}
+      />
+
+      {/* Owner Dashboard */}
+      <OwnerDashboard
+        open={ownerDashboardOpen}
+        onClose={() => setOwnerDashboardOpen(false)}
       />
     </div>
   );

@@ -10,6 +10,12 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface BlockedDate {
+  'id' : bigint,
+  'date' : string,
+  'hotelId' : bigint,
+  'reason' : string,
+}
 export interface Booking {
   'id' : bigint,
   'status' : Status,
@@ -31,9 +37,13 @@ export interface Hotel {
   'name' : string,
   'description' : string,
   'amenities' : Array<string>,
+  'approvalStatus' : HotelApprovalStatus,
   'address' : string,
   'imageIndex' : bigint,
 }
+export type HotelApprovalStatus = { 'Approved' : null } |
+  { 'Rejected' : null } |
+  { 'Pending' : null };
 export interface HotelQueryParams {
   'city' : [] | [string],
   'amenities' : [] | [Array<string>],
@@ -60,6 +70,12 @@ export interface PropertyListing {
 export type PropertyListingStatus = { 'Approved' : null } |
   { 'Rejected' : null } |
   { 'PendingApproval' : null };
+export interface RoomInventory {
+  'availableRooms' : bigint,
+  'hotelId' : bigint,
+  'roomType' : string,
+  'totalRooms' : bigint,
+}
 export type Status = { 'Confirmed' : null } |
   { 'Cancelled' : null } |
   { 'Pending' : null };
@@ -73,23 +89,35 @@ export type UserRole = { 'admin' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'approveHotel' : ActorMethod<[bigint], undefined>,
   'approvePropertyListing' : ActorMethod<[bigint], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'assignHotelOwner' : ActorMethod<[bigint, Principal], undefined>,
+  'blockDate' : ActorMethod<[string, string], undefined>,
   'cancelBooking' : ActorMethod<[bigint], undefined>,
   'createBooking' : ActorMethod<
     [bigint, string, string, string, string, string, bigint, bigint],
     bigint
   >,
+  'getAllBookings' : ActorMethod<[], Array<Booking>>,
+  'getBlockedDates' : ActorMethod<[], Array<BlockedDate>>,
   'getBooking' : ActorMethod<[bigint], Booking>,
   'getBookingsByEmail' : ActorMethod<[string], Array<Booking>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getHotel' : ActorMethod<[bigint], Hotel>,
+  'getHotelsForAdmin' : ActorMethod<[], Array<Hotel>>,
+  'getMyBookings' : ActorMethod<[], Array<Booking>>,
   'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
+  'getOwnerBookings' : ActorMethod<[], Array<Booking>>,
+  'getOwnerHotel' : ActorMethod<[], Hotel>,
+  'getOwnerRoomInventory' : ActorMethod<[], RoomInventory>,
   'getPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'rejectHotel' : ActorMethod<[bigint], undefined>,
   'rejectPropertyListing' : ActorMethod<[bigint], undefined>,
+  'revokeHotelOwner' : ActorMethod<[bigint], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'searchHotels' : ActorMethod<[HotelQueryParams], Array<Hotel>>,
   'submitPropertyListing' : ActorMethod<
@@ -109,6 +137,9 @@ export interface _SERVICE {
     ],
     bigint
   >,
+  'unblockDate' : ActorMethod<[bigint], undefined>,
+  'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
+  'updateRoomInventory' : ActorMethod<[string, bigint], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
