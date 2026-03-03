@@ -1,3 +1,4 @@
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,6 +8,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
@@ -39,8 +47,11 @@ import {
   ChevronUp,
   Clock,
   Crown,
+  Eye,
+  EyeOff,
   Home,
   Info,
+  KeyRound,
   LayoutDashboard,
   Loader2,
   LogIn,
@@ -56,6 +67,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   User,
+  UserCircle,
   Users,
   Wifi,
   Wind,
@@ -74,6 +86,10 @@ import {
 } from "./backend.d";
 import { OwnerDashboard, useIsOwner } from "./components/OwnerDashboard";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
+import {
+  CustomerAuthProvider,
+  useCustomerAuth,
+} from "./contexts/CustomerAuthContext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Helpers
@@ -919,6 +935,7 @@ interface BookingModalProps {
   onClose: () => void;
   searchParams: SearchParams;
   actor: import("./backend").backendInterface | null;
+  onOpenAuthModal?: () => void;
 }
 
 function BookingModal({
@@ -927,9 +944,9 @@ function BookingModal({
   onClose,
   searchParams,
   actor,
+  onOpenAuthModal,
 }: BookingModalProps) {
-  const { identity, login, isLoggingIn } = useInternetIdentity();
-  const isLoggedIn = !!identity;
+  const { isAuthenticated, profile } = useCustomerAuth();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
@@ -941,6 +958,20 @@ function BookingModal({
     guestCount: searchParams.guests,
   });
   const [bookingId, setBookingId] = useState<bigint | null>(null);
+
+  // Auto-fill from profile when modal opens and profile is available
+  useEffect(() => {
+    if (open && profile) {
+      setForm((prev) => ({
+        ...prev,
+        guestName: profile.name || prev.guestName,
+        guestEmail: profile.email || prev.guestEmail,
+        checkIn: searchParams.checkIn || getTodayStr(),
+        checkOut: searchParams.checkOut || getTomorrowStr(),
+        guestCount: searchParams.guests,
+      }));
+    }
+  }, [open, profile, searchParams]);
 
   const updateField = (field: string, value: string | number) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -1029,7 +1060,7 @@ function BookingModal({
         </DialogHeader>
 
         <AnimatePresence mode="wait">
-          {!isLoggedIn ? (
+          {!isAuthenticated ? (
             /* Login Prompt */
             <motion.div
               key="login-prompt"
@@ -1046,25 +1077,18 @@ function BookingModal({
                 Sign In to Book
               </h3>
               <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
-                Please sign in with Internet Identity to reserve your room.
+                Please sign in to your HIDESTAY account to reserve your room.
               </p>
               <Button
                 data-ocid="booking.login_button"
-                onClick={() => login()}
-                disabled={isLoggingIn}
+                onClick={() => {
+                  handleClose();
+                  onOpenAuthModal?.();
+                }}
                 className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8 py-5"
               >
-                {isLoggingIn ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="mr-2 h-4 w-4" />
-                    Sign In to Continue
-                  </>
-                )}
+                <LogIn className="mr-2 h-4 w-4" />
+                Sign In to Continue
               </Button>
             </motion.div>
           ) : bookingId !== null ? (
@@ -1901,6 +1925,8 @@ interface MyBookingsPageProps {
   open: boolean;
   onClose: () => void;
   actor: import("./backend").backendInterface | null;
+  isOwner?: boolean;
+  onOpenOwnerDashboard?: () => void;
 }
 
 function BookingStatusBadge({ status }: { status: Status }) {
@@ -2628,7 +2654,13 @@ function BookingDetailPage({
   );
 }
 
-function MyBookingsPage({ open, onClose, actor }: MyBookingsPageProps) {
+function MyBookingsPage({
+  open,
+  onClose,
+  actor,
+  isOwner = false,
+  onOpenOwnerDashboard,
+}: MyBookingsPageProps) {
   const queryClient = useQueryClient();
   const [selectedBookingId, setSelectedBookingId] = useState<bigint | null>(
     null,
@@ -2712,7 +2744,7 @@ function MyBookingsPage({ open, onClose, actor }: MyBookingsPageProps) {
           {/* Content */}
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             {/* Page Title */}
-            <div className="mb-6">
+            <div className="mb-4">
               <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground mb-1">
                 Your Reservations
               </h1>
@@ -2720,6 +2752,46 @@ function MyBookingsPage({ open, onClose, actor }: MyBookingsPageProps) {
                 All bookings linked to your account, sorted by latest first.
               </p>
             </div>
+
+            {/* Customer RBAC info strip */}
+            <div
+              data-ocid="my_bookings.rbac_info.section"
+              className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3"
+            >
+              <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <p className="text-blue-800 text-sm leading-snug">
+                <span className="font-semibold">Your bookings only</span> — you
+                can only see reservations linked to your account.
+              </p>
+            </div>
+
+            {/* Hotel owner notice (only when user is also a hotel owner) */}
+            {isOwner && (
+              <div
+                data-ocid="my_bookings.owner_notice.section"
+                className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6"
+              >
+                <Building2 className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-amber-800 text-sm font-medium leading-snug">
+                    You are also a hotel owner. Use the Owner Dashboard to
+                    manage your hotel&apos;s bookings.
+                  </p>
+                </div>
+                {onOpenOwnerDashboard && (
+                  <Button
+                    data-ocid="my_bookings.open_owner_dashboard_button"
+                    size="sm"
+                    onClick={onOpenOwnerDashboard}
+                    className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs px-3 h-8 gap-1.5"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    Open Owner Dashboard
+                  </Button>
+                )}
+              </div>
+            )}
+            {!isOwner && <div className="mb-6" />}
 
             {/* Loading State */}
             {isLoading && (
@@ -2987,68 +3059,1209 @@ function FilterSidebar({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Login Modal
+// Auth Modal (Email + Password Login / Sign Up)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface LoginModalProps {
+interface AuthModalProps {
   open: boolean;
   onClose: () => void;
+  defaultTab?: "login" | "signup";
 }
 
-function LoginModal({ open, onClose }: LoginModalProps) {
-  const { login, isLoggingIn, identity } = useInternetIdentity();
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  required,
+  "data-ocid": dataOcid,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  "data-ocid"?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Input
+        id={id}
+        data-ocid={dataOcid}
+        type={show ? "text" : "password"}
+        placeholder={placeholder ?? "Password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        className="pl-9 pr-10 rounded-lg border-input"
+      />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+function PasswordStrengthBar({ password }: { password: string }) {
+  const score = (() => {
+    if (!password) return 0;
+    let s = 0;
+    if (password.length >= 8) s++;
+    if (/[A-Z]/.test(password)) s++;
+    if (/[0-9]/.test(password)) s++;
+    if (/[^A-Za-z0-9]/.test(password)) s++;
+    return s;
+  })();
+
+  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+  const colors = [
+    "",
+    "bg-red-500",
+    "bg-amber-500",
+    "bg-yellow-400",
+    "bg-green-500",
+  ];
+
+  if (!password) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="font-display text-xl">
-            Sign In to HIDESTAY
-          </DialogTitle>
-        </DialogHeader>
-        {identity ? (
-          <div className="py-4 text-center space-y-3">
-            <CheckCircle className="w-10 h-10 text-green-500 mx-auto" />
-            <p className="text-sm text-muted-foreground">Signed in as</p>
-            <p className="text-xs font-mono bg-muted rounded-lg p-2 break-all text-foreground">
-              {identity.getPrincipal().toString()}
+    <div className="space-y-1">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+              i <= score ? colors[score] : "bg-muted"
+            }`}
+          />
+        ))}
+      </div>
+      {score > 0 && (
+        <p
+          className={`text-xs font-medium ${score <= 1 ? "text-red-600" : score === 2 ? "text-amber-600" : score === 3 ? "text-yellow-600" : "text-green-600"}`}
+        >
+          {labels[score]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
+  const { login, register, isAuthenticated, profile } = useCustomerAuth();
+  const {
+    identity,
+    login: iiLogin,
+    isLoggingIn: iiLoggingIn,
+  } = useInternetIdentity();
+
+  const [activeTab, setActiveTab] = useState<"login" | "signup">(defaultTab);
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [signupForm, setSignupForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [loginError, setLoginError] = useState("");
+  const [signupError, setSignupError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
+
+  const isIILoggedIn = !!identity;
+
+  const handleClose = () => {
+    onClose();
+    setLoginError("");
+    setSignupError("");
+    setLoginForm({ email: "", password: "" });
+    setSignupForm({ name: "", email: "", password: "", confirmPassword: "" });
+    setSignupSuccess(false);
+  };
+
+  // If already fully authenticated, show success
+  if (isAuthenticated && profile) {
+    return (
+      <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+        <DialogContent
+          data-ocid="auth.modal"
+          className="max-w-sm rounded-2xl p-0 overflow-hidden"
+        >
+          <div className="bg-brand px-6 pt-6 pb-5 rounded-t-2xl">
+            <DialogTitle className="text-xl font-display font-bold text-white">
+              Welcome back!
+            </DialogTitle>
+          </div>
+          <div className="px-6 py-8 text-center">
+            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-9 h-9 text-green-500" />
+            </div>
+            <p className="font-display font-bold text-lg text-foreground mb-1">
+              {profile.name}
+            </p>
+            <p className="text-sm text-muted-foreground mb-5">
+              {profile.email}
             </p>
             <Button
-              onClick={onClose}
+              data-ocid="auth.continue_button"
+              onClick={handleClose}
               className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white rounded-xl"
             >
               Continue
             </Button>
           </div>
-        ) : (
-          <div className="py-4 space-y-4">
-            <p className="text-sm text-muted-foreground text-center">
-              Connect securely with Internet Identity — no passwords required.
-            </p>
-            <Button
-              onClick={() => {
-                login();
-                onClose();
-              }}
-              disabled={isLoggingIn}
-              className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl py-5"
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const handleIILogin = async () => {
+    iiLogin();
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    if (!loginForm.email || !loginForm.password) {
+      setLoginError("Please fill in all fields.");
+      return;
+    }
+    setIsSubmitting(true);
+
+    // If not II logged in, trigger II first
+    if (!isIILoggedIn) {
+      iiLogin();
+      setIsSubmitting(false);
+      return;
+    }
+
+    const result = await login(loginForm.email, loginForm.password);
+    setIsSubmitting(false);
+    if (result.success) {
+      toast.success("Signed in successfully!");
+      handleClose();
+    } else {
+      setLoginError(result.error ?? "Login failed. Please try again.");
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSignupError("");
+
+    if (!signupForm.name || !signupForm.email || !signupForm.password) {
+      setSignupError("Please fill in all fields.");
+      return;
+    }
+    if (signupForm.password.length < 8) {
+      setSignupError("Password must be at least 8 characters.");
+      return;
+    }
+    if (signupForm.password !== signupForm.confirmPassword) {
+      setSignupError("Passwords do not match.");
+      return;
+    }
+    setIsSubmitting(true);
+
+    // If not II logged in, trigger II first
+    if (!isIILoggedIn) {
+      iiLogin();
+      setIsSubmitting(false);
+      return;
+    }
+
+    const result = await register(
+      signupForm.name,
+      signupForm.email,
+      signupForm.password,
+    );
+    setIsSubmitting(false);
+    if (result.success) {
+      setSignupSuccess(true);
+      toast.success("Account created successfully!");
+    } else {
+      setSignupError(result.error ?? "Registration failed. Please try again.");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent
+        data-ocid="auth.modal"
+        className="max-w-sm w-full p-0 gap-0 rounded-2xl overflow-hidden"
+      >
+        {/* Header */}
+        <div className="bg-brand px-6 pt-6 pb-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-display font-bold text-white">
+                {activeTab === "login" ? "Sign In" : "Create Account"}
+              </DialogTitle>
+              <p className="text-white/70 text-xs mt-0.5 font-medium">
+                HIDESTAY · Uttarakhand
+              </p>
+            </div>
+            <button
+              type="button"
+              data-ocid="auth.close_button"
+              onClick={handleClose}
+              className="text-white/70 hover:text-white transition-colors rounded-full p-1.5 hover:bg-white/10"
             >
-              {isLoggingIn ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Sign in with Internet Identity
-                </>
-              )}
-            </Button>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* II login prompt if not connected */}
+        {!isIILoggedIn && (
+          <div className="px-6 pt-5 pb-2">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-800 text-xs font-semibold leading-snug">
+                  Connect with Internet Identity first
+                </p>
+                <p className="text-amber-700 text-[11px] mt-0.5 leading-snug">
+                  Required for secure authentication on ICP.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleIILogin}
+                disabled={iiLoggingIn}
+                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded-lg px-3 h-7 gap-1 ml-auto"
+              >
+                {iiLoggingIn ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  "Connect"
+                )}
+              </Button>
+            </div>
           </div>
         )}
+
+        <div className="px-6 pb-6 pt-4">
+          <AnimatePresence mode="wait">
+            {signupSuccess ? (
+              <motion.div
+                key="signup-success"
+                data-ocid="auth.success_state"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="py-6 text-center"
+              >
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", delay: 0.1 }}
+                  className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4"
+                >
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                </motion.div>
+                <h3 className="font-display font-bold text-lg text-foreground mb-1">
+                  Account Created!
+                </h3>
+                <p className="text-muted-foreground text-sm mb-5">
+                  Welcome to HIDESTAY. You can now browse and book hotels.
+                </p>
+                <Button
+                  data-ocid="auth.done_button"
+                  onClick={handleClose}
+                  className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl"
+                >
+                  Start Exploring
+                </Button>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="auth-tabs"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => setActiveTab(v as "login" | "signup")}
+                >
+                  <TabsList className="w-full mb-5 bg-muted rounded-xl h-10">
+                    <TabsTrigger
+                      value="login"
+                      data-ocid="auth.login_tab"
+                      className="flex-1 rounded-lg text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                    >
+                      Sign In
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="signup"
+                      data-ocid="auth.signup_tab"
+                      className="flex-1 rounded-lg text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                    >
+                      Create Account
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* LOGIN */}
+                  <TabsContent value="login">
+                    <form
+                      data-ocid="auth.login_form"
+                      onSubmit={handleLogin}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="login-email"
+                          className="text-sm font-semibold"
+                        >
+                          Email Address
+                        </Label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="login-email"
+                            data-ocid="auth.login_email_input"
+                            type="email"
+                            placeholder="you@example.com"
+                            value={loginForm.email}
+                            onChange={(e) =>
+                              setLoginForm((p) => ({
+                                ...p,
+                                email: e.target.value,
+                              }))
+                            }
+                            required
+                            autoComplete="email"
+                            className="pl-9 rounded-lg border-input"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="login-password"
+                          className="text-sm font-semibold"
+                        >
+                          Password
+                        </Label>
+                        <PasswordInput
+                          id="login-password"
+                          data-ocid="auth.login_password_input"
+                          value={loginForm.password}
+                          onChange={(v) =>
+                            setLoginForm((p) => ({ ...p, password: v }))
+                          }
+                          placeholder="Your password"
+                          required
+                        />
+                      </div>
+
+                      {loginError && (
+                        <div
+                          data-ocid="auth.login_error_state"
+                          className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                        >
+                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          <p className="text-red-700 text-xs font-medium">
+                            {loginError}
+                          </p>
+                        </div>
+                      )}
+
+                      <Button
+                        data-ocid="auth.login_submit_button"
+                        type="submit"
+                        disabled={
+                          isSubmitting || (!isIILoggedIn && iiLoggingIn)
+                        }
+                        className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl mt-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Signing in...
+                          </>
+                        ) : !isIILoggedIn ? (
+                          <>
+                            <LogIn className="mr-2 h-4 w-4" />
+                            Connect &amp; Sign In
+                          </>
+                        ) : (
+                          <>
+                            <LogIn className="mr-2 h-4 w-4" />
+                            Sign In
+                          </>
+                        )}
+                      </Button>
+
+                      <p className="text-center text-xs text-muted-foreground">
+                        No account?{" "}
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("signup")}
+                          className="text-brand font-semibold hover:underline"
+                        >
+                          Create one
+                        </button>
+                      </p>
+                    </form>
+                  </TabsContent>
+
+                  {/* SIGN UP */}
+                  <TabsContent value="signup">
+                    <form
+                      data-ocid="auth.signup_form"
+                      onSubmit={handleSignup}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="signup-name"
+                          className="text-sm font-semibold"
+                        >
+                          Full Name
+                        </Label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="signup-name"
+                            data-ocid="auth.signup_name_input"
+                            type="text"
+                            placeholder="Your full name"
+                            value={signupForm.name}
+                            onChange={(e) =>
+                              setSignupForm((p) => ({
+                                ...p,
+                                name: e.target.value,
+                              }))
+                            }
+                            required
+                            autoComplete="name"
+                            className="pl-9 rounded-lg border-input"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="signup-email"
+                          className="text-sm font-semibold"
+                        >
+                          Email Address
+                        </Label>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="signup-email"
+                            data-ocid="auth.signup_email_input"
+                            type="email"
+                            placeholder="you@example.com"
+                            value={signupForm.email}
+                            onChange={(e) =>
+                              setSignupForm((p) => ({
+                                ...p,
+                                email: e.target.value,
+                              }))
+                            }
+                            required
+                            autoComplete="email"
+                            className="pl-9 rounded-lg border-input"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="signup-password"
+                          className="text-sm font-semibold"
+                        >
+                          Password
+                        </Label>
+                        <PasswordInput
+                          id="signup-password"
+                          data-ocid="auth.signup_password_input"
+                          value={signupForm.password}
+                          onChange={(v) =>
+                            setSignupForm((p) => ({ ...p, password: v }))
+                          }
+                          placeholder="Min. 8 characters"
+                          required
+                        />
+                        <PasswordStrengthBar password={signupForm.password} />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="signup-confirm"
+                          className="text-sm font-semibold"
+                        >
+                          Confirm Password
+                        </Label>
+                        <PasswordInput
+                          id="signup-confirm"
+                          data-ocid="auth.signup_confirm_password_input"
+                          value={signupForm.confirmPassword}
+                          onChange={(v) =>
+                            setSignupForm((p) => ({
+                              ...p,
+                              confirmPassword: v,
+                            }))
+                          }
+                          placeholder="Repeat password"
+                          required
+                        />
+                      </div>
+
+                      {signupError && (
+                        <div
+                          data-ocid="auth.signup_error_state"
+                          className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                        >
+                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          <p className="text-red-700 text-xs font-medium">
+                            {signupError}
+                          </p>
+                        </div>
+                      )}
+
+                      <Button
+                        data-ocid="auth.signup_submit_button"
+                        type="submit"
+                        disabled={
+                          isSubmitting || (!isIILoggedIn && iiLoggingIn)
+                        }
+                        className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl mt-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Creating account...
+                          </>
+                        ) : !isIILoggedIn ? (
+                          <>
+                            <LogIn className="mr-2 h-4 w-4" />
+                            Connect &amp; Create Account
+                          </>
+                        ) : (
+                          <>
+                            <User className="mr-2 h-4 w-4" />
+                            Create Account
+                          </>
+                        )}
+                      </Button>
+
+                      <p className="text-center text-xs text-muted-foreground">
+                        Already have an account?{" "}
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("login")}
+                          className="text-brand font-semibold hover:underline"
+                        >
+                          Sign in
+                        </button>
+                      </p>
+                    </form>
+                  </TabsContent>
+                </Tabs>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Customer Profile Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CustomerProfilePageProps {
+  open: boolean;
+  onClose: () => void;
+  actor: import("./backend").backendInterface | null;
+  onMyBookingsClick: () => void;
+}
+
+function formatMemberSince(memberSince: bigint): string {
+  try {
+    const ms = Number(memberSince);
+    if (ms === 0) return "Recently joined";
+    // If it looks like a nanoseconds timestamp (ICP uses ns), convert
+    const asMs = ms > 1e15 ? ms / 1_000_000 : ms;
+    const date = new Date(asMs);
+    if (Number.isNaN(date.getTime())) return "Recently joined";
+    return date.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return "Recently joined";
+  }
+}
+
+function CustomerProfilePage({
+  open,
+  onClose,
+  actor,
+  onMyBookingsClick,
+}: CustomerProfilePageProps) {
+  const { profile, logout, refetchProfile } = useCustomerAuth();
+  const queryClient = useQueryClient();
+
+  const [editForm, setEditForm] = useState({ name: "", email: "" });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [pwForm, setPwForm] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  // Sync edit form when profile loads
+  useEffect(() => {
+    if (profile) {
+      setEditForm({ name: profile.name, email: profile.email });
+    }
+  }, [profile]);
+
+  const initials =
+    profile?.name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() ?? "?";
+
+  const { data: bookingsCount = 0 } = useQuery<number>({
+    queryKey: ["my-bookings-count"],
+    queryFn: async () => {
+      if (!actor) return 0;
+      const bookings = await actor.getMyBookings();
+      return bookings.length;
+    },
+    enabled: open && !!actor,
+  });
+
+  const { mutate: saveProfile, isPending: isSavingProfile } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      const result = await actor.updateCustomerProfile(
+        editForm.name,
+        editForm.email,
+      );
+      if (result.__kind__ === "error") throw new Error(result.error);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
+      refetchProfile();
+      setIsEditingProfile(false);
+      setEditError("");
+      toast.success("Profile updated successfully!");
+    },
+    onError: (err: Error) => {
+      setEditError(err.message ?? "Failed to update profile.");
+    },
+  });
+
+  const { mutate: changePassword, isPending: isChangingPassword } = useMutation(
+    {
+      mutationFn: async () => {
+        if (!actor) throw new Error("Not connected");
+        const result = await actor.changePassword(
+          pwForm.oldPassword,
+          pwForm.newPassword,
+        );
+        if (result.__kind__ === "error") throw new Error(result.error);
+      },
+      onSuccess: () => {
+        setPwSuccess(true);
+        setPwError("");
+        setPwForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
+        toast.success("Password changed successfully!");
+      },
+      onError: (err: Error) => {
+        setPwError(err.message ?? "Failed to change password.");
+      },
+    },
+  );
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError("");
+    setPwSuccess(false);
+    if (!pwForm.oldPassword || !pwForm.newPassword) {
+      setPwError("Please fill in all fields.");
+      return;
+    }
+    if (pwForm.newPassword.length < 8) {
+      setPwError("New password must be at least 8 characters.");
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError("New passwords do not match.");
+      return;
+    }
+    changePassword();
+  };
+
+  if (!open) return null;
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          data-ocid="profile.panel"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-background overflow-y-auto"
+        >
+          {/* Header */}
+          <div className="sticky top-0 z-10 bg-brand shadow-header">
+            <div className="max-w-2xl mx-auto px-4 sm:px-6">
+              <div className="flex items-center justify-between h-16">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 rounded-xl p-2">
+                    <UserCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <span className="font-display text-lg font-extrabold text-white tracking-tight block leading-none">
+                      My Profile
+                    </span>
+                    <span className="text-white/70 text-xs font-medium">
+                      HIDESTAY
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  data-ocid="profile.close_button"
+                  onClick={onClose}
+                  size="sm"
+                  className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
+                >
+                  <X className="w-4 h-4" />
+                  <span className="hidden sm:inline">Back</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-6 pb-16">
+            {/* Profile Hero Card */}
+            <motion.div
+              data-ocid="profile.hero_card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="bg-card border border-border rounded-2xl overflow-hidden"
+            >
+              {/* Red gradient header */}
+              <div className="bg-gradient-to-br from-brand to-[oklch(0.42_0.22_25.5)] px-6 py-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/30 flex items-center justify-center shadow-lg">
+                    <span className="font-display text-2xl font-extrabold text-white">
+                      {initials}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-display text-xl font-extrabold text-white leading-tight truncate">
+                      {profile?.name ?? "Loading..."}
+                    </h2>
+                    <p className="text-white/75 text-sm truncate">
+                      {profile?.email}
+                    </p>
+                    <p className="text-white/55 text-xs mt-1">
+                      Member since{" "}
+                      {profile ? formatMemberSince(profile.memberSince) : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-2 divide-x divide-border border-t border-border">
+                <button
+                  type="button"
+                  data-ocid="profile.my_bookings_button"
+                  onClick={() => {
+                    onClose();
+                    onMyBookingsClick();
+                  }}
+                  className="flex flex-col items-center py-4 hover:bg-muted/40 transition-colors"
+                >
+                  <span className="font-display font-extrabold text-2xl text-brand">
+                    {bookingsCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium mt-0.5 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-brand" />
+                    My Bookings
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  data-ocid="profile.signout_button"
+                  onClick={() => {
+                    logout();
+                    onClose();
+                  }}
+                  className="flex flex-col items-center py-4 hover:bg-red-50 transition-colors text-red-600"
+                >
+                  <LogOut className="w-5 h-5 mb-1" />
+                  <span className="text-xs font-semibold">Sign Out</span>
+                </button>
+              </div>
+            </motion.div>
+
+            {/* Edit Profile */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.05 }}
+              className="bg-card border border-border rounded-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-brand/10 flex items-center justify-center">
+                    <User className="w-4 h-4 text-brand" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Personal Information
+                  </h3>
+                </div>
+                {!isEditingProfile && (
+                  <Button
+                    data-ocid="profile.edit_button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingProfile(true)}
+                    className="border-border text-foreground hover:bg-muted font-semibold rounded-lg text-xs gap-1.5"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    Edit
+                  </Button>
+                )}
+              </div>
+
+              {isEditingProfile ? (
+                <form
+                  data-ocid="profile.edit_form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    saveProfile();
+                  }}
+                  className="px-5 py-5 space-y-4"
+                >
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="profile-name"
+                      className="text-sm font-semibold"
+                    >
+                      Full Name
+                    </Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="profile-name"
+                        data-ocid="profile.name_input"
+                        value={editForm.name}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, name: e.target.value }))
+                        }
+                        required
+                        className="pl-9 rounded-lg border-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="profile-email"
+                      className="text-sm font-semibold"
+                    >
+                      Email Address
+                    </Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="profile-email"
+                        data-ocid="profile.email_input"
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, email: e.target.value }))
+                        }
+                        required
+                        className="pl-9 rounded-lg border-input"
+                      />
+                    </div>
+                  </div>
+
+                  {editError && (
+                    <div
+                      data-ocid="profile.edit_error_state"
+                      className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                    >
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                      <p className="text-red-700 text-xs">{editError}</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-1">
+                    <Button
+                      data-ocid="profile.save_button"
+                      type="submit"
+                      disabled={isSavingProfile}
+                      className="flex-1 bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl"
+                    >
+                      {isSavingProfile ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
+                    <Button
+                      data-ocid="profile.cancel_button"
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditingProfile(false);
+                        setEditError("");
+                        if (profile)
+                          setEditForm({
+                            name: profile.name,
+                            email: profile.email,
+                          });
+                      }}
+                      className="border-border font-semibold rounded-xl"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="px-5 py-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                        Full Name
+                      </p>
+                      <p className="font-semibold text-foreground text-sm">
+                        {profile?.name}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                        Email Address
+                      </p>
+                      <p className="font-semibold text-foreground text-sm">
+                        {profile?.email}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Change Password */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.1 }}
+              className="bg-card border border-border rounded-2xl overflow-hidden"
+            >
+              <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
+                <div className="w-7 h-7 rounded-lg bg-brand/10 flex items-center justify-center">
+                  <KeyRound className="w-4 h-4 text-brand" />
+                </div>
+                <h3 className="font-display font-bold text-base text-foreground">
+                  Change Password
+                </h3>
+              </div>
+
+              <form
+                data-ocid="profile.change_password_form"
+                onSubmit={handlePasswordSubmit}
+                className="px-5 py-5 space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="old-password"
+                    className="text-sm font-semibold"
+                  >
+                    Current Password
+                  </Label>
+                  <PasswordInput
+                    id="old-password"
+                    data-ocid="profile.current_password_input"
+                    value={pwForm.oldPassword}
+                    onChange={(v) =>
+                      setPwForm((p) => ({ ...p, oldPassword: v }))
+                    }
+                    placeholder="Current password"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="new-password"
+                    className="text-sm font-semibold"
+                  >
+                    New Password
+                  </Label>
+                  <PasswordInput
+                    id="new-password"
+                    data-ocid="profile.new_password_input"
+                    value={pwForm.newPassword}
+                    onChange={(v) =>
+                      setPwForm((p) => ({ ...p, newPassword: v }))
+                    }
+                    placeholder="Min. 8 characters"
+                    required
+                  />
+                  <PasswordStrengthBar password={pwForm.newPassword} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="confirm-new-password"
+                    className="text-sm font-semibold"
+                  >
+                    Confirm New Password
+                  </Label>
+                  <PasswordInput
+                    id="confirm-new-password"
+                    data-ocid="profile.confirm_new_password_input"
+                    value={pwForm.confirmPassword}
+                    onChange={(v) =>
+                      setPwForm((p) => ({ ...p, confirmPassword: v }))
+                    }
+                    placeholder="Repeat new password"
+                    required
+                  />
+                </div>
+
+                {pwError && (
+                  <div
+                    data-ocid="profile.password_error_state"
+                    className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <p className="text-red-700 text-xs">{pwError}</p>
+                  </div>
+                )}
+
+                {pwSuccess && (
+                  <div
+                    data-ocid="profile.password_success_state"
+                    className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2"
+                  >
+                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                    <p className="text-green-700 text-xs font-medium">
+                      Password changed successfully!
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  data-ocid="profile.change_password_submit_button"
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl py-5"
+                >
+                  {isChangingPassword ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Changing Password...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      Change Password
+                    </>
+                  )}
+                </Button>
+              </form>
+            </motion.div>
+
+            {/* My Bookings Link Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.15 }}
+            >
+              <button
+                type="button"
+                data-ocid="profile.go_to_bookings_button"
+                onClick={() => {
+                  onClose();
+                  onMyBookingsClick();
+                }}
+                className="w-full bg-card border border-border rounded-2xl px-5 py-5 flex items-center gap-4 hover:bg-muted/30 transition-colors text-left group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
+                  <BookOpen className="w-6 h-6 text-brand" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display font-bold text-base text-foreground leading-tight">
+                    My Bookings
+                  </p>
+                  <p className="text-muted-foreground text-sm mt-0.5">
+                    View all your hotel reservations
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {bookingsCount > 0 && (
+                    <Badge className="bg-brand text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {bookingsCount}
+                    </Badge>
+                  )}
+                  <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-brand transition-colors" />
+                </div>
+              </button>
+            </motion.div>
+
+            {/* Sign Out */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.2 }}
+            >
+              <Button
+                data-ocid="profile.bottom_signout_button"
+                variant="outline"
+                onClick={() => {
+                  logout();
+                  onClose();
+                }}
+                className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 font-semibold rounded-2xl py-5 gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -3062,6 +4275,7 @@ interface HeaderProps {
   onAdminClick: () => void;
   onMyBookingsClick: () => void;
   onOwnerDashboardClick: () => void;
+  onProfileClick: () => void;
   onLogoClick: () => void;
   isAdmin: boolean;
   isOwner: boolean;
@@ -3074,13 +4288,21 @@ function Header({
   onAdminClick,
   onMyBookingsClick,
   onOwnerDashboardClick,
+  onProfileClick,
   onLogoClick,
   isAdmin,
   isOwner,
   pendingListingsCount,
 }: HeaderProps) {
-  const { identity, clear } = useInternetIdentity();
-  const isLoggedIn = !!identity;
+  const { isAuthenticated, profile, logout } = useCustomerAuth();
+
+  const initials =
+    profile?.name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() ?? "?";
 
   return (
     <header className="sticky top-0 z-50 bg-brand shadow-header">
@@ -3119,7 +4341,7 @@ function Header({
               List Your Property
             </Button>
 
-            {isLoggedIn && (
+            {isAuthenticated && (
               <Button
                 data-ocid="header.my_bookings_button"
                 onClick={onMyBookingsClick}
@@ -3163,16 +4385,58 @@ function Header({
               </Button>
             )}
 
-            {isLoggedIn ? (
-              <Button
-                data-ocid="header.login_button"
-                onClick={clear}
-                size="sm"
-                className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </Button>
+            {isAuthenticated && profile ? (
+              /* User avatar dropdown */
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    data-ocid="header.profile_button"
+                    className="flex items-center gap-2 bg-white/15 hover:bg-white/25 border border-white/30 rounded-xl px-2.5 py-1.5 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                  >
+                    <Avatar className="w-7 h-7">
+                      <AvatarFallback className="bg-white/30 text-white font-display font-extrabold text-xs">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="hidden sm:block font-semibold text-white text-sm max-w-[100px] truncate">
+                      {profile.name.split(" ")[0]}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-white/70 hidden sm:block" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  data-ocid="header.profile_dropdown_menu"
+                  align="end"
+                  className="w-48 rounded-xl shadow-modal"
+                >
+                  <DropdownMenuItem
+                    data-ocid="header.profile_link"
+                    onClick={onProfileClick}
+                    className="gap-2.5 cursor-pointer font-medium"
+                  >
+                    <UserCircle className="w-4 h-4 text-muted-foreground" />
+                    My Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-ocid="header.bookings_link"
+                    onClick={onMyBookingsClick}
+                    className="gap-2.5 cursor-pointer font-medium"
+                  >
+                    <BookOpen className="w-4 h-4 text-muted-foreground" />
+                    My Bookings
+                  </DropdownMenuItem>
+                  <Separator className="my-1" />
+                  <DropdownMenuItem
+                    data-ocid="header.signout_button"
+                    onClick={() => logout()}
+                    className="gap-2.5 cursor-pointer font-medium text-red-600 focus:text-red-600 focus:bg-red-50"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <Button
                 data-ocid="header.login_button"
@@ -3181,7 +4445,7 @@ function Header({
                 className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
               >
                 <LogIn className="w-4 h-4" />
-                Login
+                Sign In
               </Button>
             )}
           </div>
@@ -3543,7 +4807,7 @@ function MobileFilterPanel({
 // Main App
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function App() {
+function AppInner() {
   const { actor, isFetching: actorLoading } = useActor();
 
   // ── State
@@ -3570,8 +4834,9 @@ export default function App() {
   const [selectedHotelId, setSelectedHotelId] = useState<bigint | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
+  const [profilePageOpen, setProfilePageOpen] = useState(false);
   const [superAdminOpen, setSuperAdminOpen] = useState(
     () => window.location.pathname === "/admin",
   );
@@ -3597,9 +4862,10 @@ export default function App() {
     setSuperAdminOpen(false);
   }, []);
 
-  // ── Auth check
+  // ── Auth
   const { identity } = useInternetIdentity();
-  const isLoggedIn = !!identity;
+  const isIILoggedIn = !!identity;
+  const { isAuthenticated } = useCustomerAuth();
 
   // ── Admin check
   const { data: isAdmin = false } = useQuery<boolean>({
@@ -3612,7 +4878,7 @@ export default function App() {
   });
 
   // ── Owner check
-  const { isOwner } = useIsOwner(isLoggedIn && !!actor && !actorLoading);
+  const { isOwner } = useIsOwner(isIILoggedIn && !!actor && !actorLoading);
 
   // ── Pending listings count (admin only)
   const { data: pendingListingsCount = 0 } = useQuery<number>({
@@ -3703,17 +4969,25 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Close profile page if user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setProfilePageOpen(false);
+    }
+  }, [isAuthenticated]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col font-body">
       <Toaster position="top-right" richColors />
 
       {/* Header — always visible */}
       <Header
-        onLoginClick={() => setLoginModalOpen(true)}
+        onLoginClick={() => setAuthModalOpen(true)}
         onListPropertyClick={() => setListPropertyModalOpen(true)}
         onAdminClick={openAdminPanel}
         onMyBookingsClick={() => setMyBookingsPanelOpen(true)}
         onOwnerDashboardClick={() => setOwnerDashboardOpen(true)}
+        onProfileClick={() => setProfilePageOpen(true)}
         onLogoClick={handleBackFromDetail}
         isAdmin={isAdmin}
         isOwner={isOwner}
@@ -3923,12 +5197,21 @@ export default function App() {
         onClose={() => setBookingModalOpen(false)}
         searchParams={searchParams}
         actor={actor}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
       />
 
-      {/* Login Modal */}
-      <LoginModal
-        open={loginModalOpen}
-        onClose={() => setLoginModalOpen(false)}
+      {/* Auth Modal (Email + Password) */}
+      <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+      {/* Customer Profile Page */}
+      <CustomerProfilePage
+        open={profilePageOpen}
+        onClose={() => setProfilePageOpen(false)}
+        actor={actor}
+        onMyBookingsClick={() => {
+          setProfilePageOpen(false);
+          setMyBookingsPanelOpen(true);
+        }}
       />
 
       {/* List Property Modal */}
@@ -3951,6 +5234,11 @@ export default function App() {
         open={myBookingsPanelOpen}
         onClose={() => setMyBookingsPanelOpen(false)}
         actor={actor}
+        isOwner={isOwner}
+        onOpenOwnerDashboard={() => {
+          setMyBookingsPanelOpen(false);
+          setOwnerDashboardOpen(true);
+        }}
       />
 
       {/* Owner Dashboard */}
@@ -3959,5 +5247,13 @@ export default function App() {
         onClose={() => setOwnerDashboardOpen(false)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <CustomerAuthProvider>
+      <AppInner />
+    </CustomerAuthProvider>
   );
 }

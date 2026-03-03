@@ -823,6 +823,23 @@ function BookingsTab({ bookings, isLoading }: BookingsTabProps) {
 
   return (
     <div className="space-y-4">
+      {/* RBAC Info Strip — Super Admin sees all bookings */}
+      <div
+        data-ocid="super_admin.bookings.rbac_info.section"
+        className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3"
+      >
+        <ShieldCheck className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-indigo-800 text-sm font-medium leading-snug">
+            <span className="font-bold">Super Admin View</span> — All platform
+            bookings are visible to you.
+          </p>
+        </div>
+        <span className="shrink-0 bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold px-2.5 py-1 rounded-full">
+          {bookings.length} total
+        </span>
+      </div>
+
       {/* Filters row */}
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Text search */}

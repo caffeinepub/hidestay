@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Clock,
   Home,
+  Hotel as HotelIcon,
   Info,
   Loader2,
   MapPin,
@@ -291,6 +292,7 @@ interface BookingsTabProps {
   isLoading: boolean;
   actor: import("../backend").backendInterface | null;
   onRefresh: () => void;
+  hotelName: string;
 }
 
 function BookingsTab({
@@ -298,6 +300,7 @@ function BookingsTab({
   isLoading,
   actor,
   onRefresh,
+  hotelName,
 }: BookingsTabProps) {
   const queryClient = useQueryClient();
 
@@ -321,12 +324,26 @@ function BookingsTab({
     },
   });
 
+  const rbacBanner = (
+    <div
+      data-ocid="owner_dashboard.bookings.rbac_info.section"
+      className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4"
+    >
+      <HotelIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+      <p className="text-amber-800 text-sm leading-snug">
+        Showing bookings for <span className="font-semibold">{hotelName}</span>{" "}
+        only — you cannot view bookings from other hotels.
+      </p>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div
         data-ocid="owner_dashboard.bookings.loading_state"
         className="space-y-3"
       >
+        {rbacBanner}
         {[1, 2, 3].map((k) => (
           <div key={k} className="bg-card border border-border rounded-xl p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -348,23 +365,26 @@ function BookingsTab({
 
   if (bookings.length === 0) {
     return (
-      <motion.div
-        data-ocid="owner_dashboard.bookings.empty_state"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-center py-20 px-6"
-      >
-        <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <BookOpen className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <h3 className="font-display text-xl font-bold text-foreground mb-2">
-          No bookings yet
-        </h3>
-        <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-          Bookings for your hotel will appear here once guests make
-          reservations.
-        </p>
-      </motion.div>
+      <>
+        {rbacBanner}
+        <motion.div
+          data-ocid="owner_dashboard.bookings.empty_state"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center py-20 px-6"
+        >
+          <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h3 className="font-display text-xl font-bold text-foreground mb-2">
+            No bookings yet
+          </h3>
+          <p className="text-muted-foreground text-sm max-w-sm mx-auto">
+            Bookings for your hotel will appear here once guests make
+            reservations.
+          </p>
+        </motion.div>
+      </>
     );
   }
 
@@ -380,6 +400,8 @@ function BookingsTab({
       transition={{ duration: 0.3 }}
       className="space-y-3"
     >
+      {rbacBanner}
+
       <p className="text-sm text-muted-foreground mb-2">
         {bookings.length} {bookings.length === 1 ? "booking" : "bookings"} total
         · sorted by latest first
@@ -1378,6 +1400,7 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                         isLoading={bookingsLoading}
                         actor={actor}
                         onRefresh={handleRefreshAll}
+                        hotelName={hotel.name}
                       />
                     </motion.div>
                   )}
@@ -1425,12 +1448,7 @@ export function useIsOwner(enabled: boolean) {
     queryKey: ["is-owner"],
     queryFn: async () => {
       if (!actor) return false;
-      try {
-        await actor.getOwnerHotel();
-        return true;
-      } catch {
-        return false;
-      }
+      return actor.isCallerHotelOwner();
     },
     enabled: enabled && !!actor && !actorLoading,
     retry: false,

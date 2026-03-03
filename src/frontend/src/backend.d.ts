@@ -31,18 +31,11 @@ export interface RoomInventory {
     roomType: string;
     totalRooms: bigint;
 }
-export interface Booking {
-    id: bigint;
-    status: Status;
-    created: bigint;
-    checkIn: string;
-    owner: Principal;
-    guestCount: bigint;
-    hotelId: bigint;
-    guestName: string;
-    guestEmail: string;
-    checkOut: string;
-    phone: string;
+export interface CustomerProfile {
+    name: string;
+    email: string;
+    memberSince: bigint;
+    passwordHash: string;
 }
 export interface PropertyListing {
     id: bigint;
@@ -61,16 +54,29 @@ export interface PropertyListing {
     address: string;
     roomType: string;
 }
-export interface BlockedDate {
+export interface Booking {
     id: bigint;
-    date: string;
+    status: Status;
+    created: bigint;
+    checkIn: string;
+    owner: Principal;
+    guestCount: bigint;
     hotelId: bigint;
-    reason: string;
+    guestName: string;
+    guestEmail: string;
+    checkOut: string;
+    phone: string;
 }
 export interface UserProfile {
     name: string;
     email: string;
     phone: string;
+}
+export interface BlockedDate {
+    id: bigint;
+    date: string;
+    hotelId: bigint;
+    reason: string;
 }
 export enum HotelApprovalStatus {
     Approved = "Approved",
@@ -99,6 +105,13 @@ export interface backendInterface {
     assignHotelOwner(hotelId: bigint, ownerPrincipal: Principal): Promise<void>;
     blockDate(date: string, reason: string): Promise<void>;
     cancelBooking(id: bigint): Promise<void>;
+    changePassword(oldPassword: string, newPassword: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
     createBooking(hotelId: bigint, guestName: string, guestEmail: string, phone: string, checkIn: string, checkOut: string, guestCount: bigint, created: bigint): Promise<bigint>;
     getAllBookings(): Promise<Array<Booking>>;
     getBlockedDates(): Promise<Array<BlockedDate>>;
@@ -109,6 +122,7 @@ export interface backendInterface {
     getHotel(id: bigint): Promise<Hotel>;
     getHotelsForAdmin(): Promise<Array<Hotel>>;
     getMyBookings(): Promise<Array<Booking>>;
+    getMyCustomerProfile(): Promise<CustomerProfile | null>;
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
     getOwnerBookings(): Promise<Array<Booking>>;
     getOwnerHotel(): Promise<Hotel>;
@@ -116,6 +130,21 @@ export interface backendInterface {
     getPropertyListings(): Promise<Array<PropertyListing>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    isCallerHotelOwner(): Promise<boolean>;
+    loginCustomer(email: string, password: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
+    registerCustomer(name: string, email: string, password: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
     rejectHotel(id: bigint): Promise<void>;
     rejectPropertyListing(id: bigint): Promise<void>;
     revokeHotelOwner(hotelId: bigint): Promise<void>;
@@ -125,5 +154,12 @@ export interface backendInterface {
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
+    updateCustomerProfile(name: string, email: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
     updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;
 }

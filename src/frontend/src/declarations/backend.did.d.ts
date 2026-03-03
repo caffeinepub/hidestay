@@ -29,6 +29,12 @@ export interface Booking {
   'checkOut' : string,
   'phone' : string,
 }
+export interface CustomerProfile {
+  'name' : string,
+  'email' : string,
+  'memberSince' : bigint,
+  'passwordHash' : string,
+}
 export interface Hotel {
   'id' : bigint,
   'starRating' : bigint,
@@ -95,6 +101,11 @@ export interface _SERVICE {
   'assignHotelOwner' : ActorMethod<[bigint, Principal], undefined>,
   'blockDate' : ActorMethod<[string, string], undefined>,
   'cancelBooking' : ActorMethod<[bigint], undefined>,
+  'changePassword' : ActorMethod<
+    [string, string],
+    { 'ok' : string } |
+      { 'error' : string }
+  >,
   'createBooking' : ActorMethod<
     [bigint, string, string, string, string, string, bigint, bigint],
     bigint
@@ -108,6 +119,7 @@ export interface _SERVICE {
   'getHotel' : ActorMethod<[bigint], Hotel>,
   'getHotelsForAdmin' : ActorMethod<[], Array<Hotel>>,
   'getMyBookings' : ActorMethod<[], Array<Booking>>,
+  'getMyCustomerProfile' : ActorMethod<[], [] | [CustomerProfile]>,
   'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getOwnerBookings' : ActorMethod<[], Array<Booking>>,
   'getOwnerHotel' : ActorMethod<[], Hotel>,
@@ -115,6 +127,17 @@ export interface _SERVICE {
   'getPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'isCallerHotelOwner' : ActorMethod<[], boolean>,
+  'loginCustomer' : ActorMethod<
+    [string, string],
+    { 'ok' : string } |
+      { 'error' : string }
+  >,
+  'registerCustomer' : ActorMethod<
+    [string, string, string],
+    { 'ok' : string } |
+      { 'error' : string }
+  >,
   'rejectHotel' : ActorMethod<[bigint], undefined>,
   'rejectPropertyListing' : ActorMethod<[bigint], undefined>,
   'revokeHotelOwner' : ActorMethod<[bigint], undefined>,
@@ -140,6 +163,11 @@ export interface _SERVICE {
   'suspendHotel' : ActorMethod<[bigint], undefined>,
   'unblockDate' : ActorMethod<[bigint], undefined>,
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
+  'updateCustomerProfile' : ActorMethod<
+    [string, string],
+    { 'ok' : string } |
+      { 'error' : string }
+  >,
   'updateRoomInventory' : ActorMethod<[string, bigint], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;

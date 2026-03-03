@@ -7,7 +7,9 @@ import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
+import Migration "migration";
 
+(with migration = Migration.run)
 actor {
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -39,6 +41,135 @@ actor {
       Runtime.trap("Unauthorized: Only users can save profiles");
     };
     userProfiles.add(caller, profile);
+  };
+
+  public type CustomerProfile = {
+    name : Text;
+    email : Text;
+    passwordHash : Text;
+    memberSince : Int;
+  };
+
+  let customerProfiles = Map.empty<Principal, CustomerProfile>();
+  let emailToPrincipal = Map.empty<Text, Principal>();
+
+  public shared ({ caller }) func registerCustomer(name : Text, email : Text, password : Text) : async {
+    #ok : Text;
+    #error : Text;
+  } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can register customer profiles");
+    };
+
+    if (emailToPrincipal.containsKey(email)) {
+      return #error("Email already registered");
+    };
+
+    let profile : CustomerProfile = {
+      name;
+      email;
+      passwordHash = password;
+      memberSince = 2024_01_01_0000;
+    };
+
+    customerProfiles.add(caller, profile);
+    emailToPrincipal.add(email, caller);
+
+    #ok("Registration successful");
+  };
+
+  public shared ({ caller }) func loginCustomer(email : Text, password : Text) : async {
+    #ok : Text;
+    #error : Text;
+  } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can login");
+    };
+
+    switch (emailToPrincipal.get(email)) {
+      case (null) { #error("Invalid credentials") };
+      case (?principal) {
+        switch (customerProfiles.get(principal)) {
+          case (null) { #error("Profile not found") };
+          case (?profile) {
+            if (profile.passwordHash == password) {
+              #ok("Login successful");
+            } else {
+              #error("Invalid password");
+            };
+          };
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getMyCustomerProfile() : async ?CustomerProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can access customer profiles");
+    };
+    customerProfiles.get(caller);
+  };
+
+  public shared ({ caller }) func updateCustomerProfile(name : Text, email : Text) : async {
+    #ok : Text;
+    #error : Text;
+  } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can update customer profiles");
+    };
+
+    switch (customerProfiles.get(caller)) {
+      case (null) { #error("Profile not found") };
+      case (?profile) {
+        if (profile.email != email and emailToPrincipal.containsKey(email)) {
+          return #error("Email already in use");
+        };
+
+        let updated : CustomerProfile = {
+          name;
+          email;
+          passwordHash = profile.passwordHash;
+          memberSince = profile.memberSince;
+        };
+        customerProfiles.add(caller, updated);
+
+        let currentEmail = profile.email;
+        if (currentEmail != email and emailToPrincipal.get(currentEmail) == ?caller) {
+          emailToPrincipal.remove(currentEmail);
+        };
+
+        emailToPrincipal.add(email, caller);
+
+        #ok("Profile updated successfully");
+      };
+    };
+  };
+
+  public shared ({ caller }) func changePassword(oldPassword : Text, newPassword : Text) : async {
+    #ok : Text;
+    #error : Text;
+  } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users can change passwords");
+    };
+
+    switch (customerProfiles.get(caller)) {
+      case (null) { #error("Profile not found") };
+      case (?profile) {
+        if (profile.passwordHash != oldPassword) {
+          #error("Incorrect old password");
+        } else {
+          let updated : CustomerProfile = {
+            name = profile.name;
+            email = profile.email;
+            passwordHash = newPassword;
+            memberSince = profile.memberSince;
+          };
+          customerProfiles.add(caller, updated);
+          #ok("Password updated successfully");
+        };
+      };
+    };
   };
 
   public type HotelApprovalStatus = {
@@ -163,321 +294,6 @@ actor {
     };
   };
 
-  func initializeHotels() {
-    let initialHotels : [Hotel] = [
-      {
-        id = 1;
-        name = "Ganga View Inn";
-        city = "Haridwar";
-        description = "Standard | Budget stay near Har Ki Pauri ghat";
-        starRating = 3;
-        pricePerNight = 899;
-        amenities = ["WiFi", "AC"];
-        address = "Har Ki Pauri Road, Haridwar";
-        imageIndex = 1;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 2;
-        name = "Haridwar Budget Lodge";
-        city = "Haridwar";
-        description = "Standard | Clean rooms near main market";
-        starRating = 2;
-        pricePerNight = 599;
-        amenities = ["WiFi"];
-        address = "Main Bazar, Haridwar";
-        imageIndex = 2;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 3;
-        name = "Shivalik Residency";
-        city = "Haridwar";
-        description = "Deluxe | Comfortable stay with mountain views";
-        starRating = 4;
-        pricePerNight = 1799;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Railway Road, Haridwar";
-        imageIndex = 3;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 4;
-        name = "Pilgrims Nest Haridwar";
-        city = "Haridwar";
-        description = "Standard | Walking distance to ghats";
-        starRating = 3;
-        pricePerNight = 799;
-        amenities = ["WiFi", "AC"];
-        address = "Ghat Area, Haridwar";
-        imageIndex = 4;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 5;
-        name = "Devbhoomi Grand";
-        city = "Haridwar";
-        description = "Suite | Luxury suites near Chandi Devi";
-        starRating = 5;
-        pricePerNight = 3499;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Chandi Devi Road, Haridwar";
-        imageIndex = 5;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 6;
-        name = "Riverside Budget Inn";
-        city = "Rishikesh";
-        description = "Standard | Steps from Laxman Jhula";
-        starRating = 3;
-        pricePerNight = 999;
-        amenities = ["WiFi", "AC"];
-        address = "Laxman Jhula, Rishikesh";
-        imageIndex = 6;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 7;
-        name = "Yoga Retreat Lodge";
-        city = "Rishikesh";
-        description = "Standard | Peaceful stay near ashrams";
-        starRating = 3;
-        pricePerNight = 849;
-        amenities = ["WiFi"];
-        address = "Tapovan, Rishikesh";
-        imageIndex = 7;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 8;
-        name = "Ganga Breeze Hotel";
-        city = "Rishikesh";
-        description = "Deluxe | Riverside rooms with Ganga view";
-        starRating = 4;
-        pricePerNight = 2199;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Ram Jhula Road, Rishikesh";
-        imageIndex = 8;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 9;
-        name = "Adventure Camp Rishikesh";
-        city = "Rishikesh";
-        description = "Standard | Near rafting and trekking zones";
-        starRating = 3;
-        pricePerNight = 1199;
-        amenities = ["WiFi", "Parking"];
-        address = "Shivpuri, Rishikesh";
-        imageIndex = 9;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 10;
-        name = "The Himalayan Retreat";
-        city = "Rishikesh";
-        description = "Suite | Premium suites with valley views";
-        starRating = 5;
-        pricePerNight = 4299;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Neelkanth Road, Rishikesh";
-        imageIndex = 10;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 11;
-        name = "Valley View Budget Hotel";
-        city = "Mussoorie";
-        description = "Standard | Affordable stay with doon valley view";
-        starRating = 3;
-        pricePerNight = 1099;
-        amenities = ["WiFi", "AC"];
-        address = "Mall Road, Mussoorie";
-        imageIndex = 11;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 12;
-        name = "Mussoorie Hillside Inn";
-        city = "Mussoorie";
-        description = "Standard | Cozy rooms near Kempty Falls";
-        starRating = 2;
-        pricePerNight = 849;
-        amenities = ["WiFi"];
-        address = "Kempty Fall Road, Mussoorie";
-        imageIndex = 12;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 13;
-        name = "Cloud End Resort";
-        city = "Mussoorie";
-        description = "Deluxe | Stunning cloud-level mountain views";
-        starRating = 4;
-        pricePerNight = 2799;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Landour, Mussoorie";
-        imageIndex = 13;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 14;
-        name = "Landour Heritage Hotel";
-        city = "Mussoorie";
-        description = "Deluxe | Colonial-era building with period charm";
-        starRating = 4;
-        pricePerNight = 2299;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Landour Cantonment, Mussoorie";
-        imageIndex = 14;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 15;
-        name = "The Grand Mussoorie";
-        city = "Mussoorie";
-        description = "Suite | Five-star luxury on the ridge";
-        starRating = 5;
-        pricePerNight = 5499;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "The Mall, Mussoorie";
-        imageIndex = 15;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 16;
-        name = "Dhanaulti Eco Camp";
-        city = "Dhanaulti";
-        description = "Standard | Forest eco stay surrounded by deodar trees";
-        starRating = 3;
-        pricePerNight = 1299;
-        amenities = ["WiFi", "Parking"];
-        address = "Eco Park Road, Dhanaulti";
-        imageIndex = 1;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 17;
-        name = "Pine Grove Cottage";
-        city = "Dhanaulti";
-        description = "Standard | Rustic cottages in pine forest";
-        starRating = 3;
-        pricePerNight = 1099;
-        amenities = ["WiFi"];
-        address = "Forest Area, Dhanaulti";
-        imageIndex = 2;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 18;
-        name = "Snow View Resort";
-        city = "Dhanaulti";
-        description = "Deluxe | Panoramic Himalayan snow views";
-        starRating = 4;
-        pricePerNight = 2499;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Snow View Point, Dhanaulti";
-        imageIndex = 3;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 19;
-        name = "Himalayan Woods Stay";
-        city = "Dhanaulti";
-        description = "Standard | Budget stay in quiet forest zone";
-        starRating = 2;
-        pricePerNight = 799;
-        amenities = ["WiFi"];
-        address = "Village Road, Dhanaulti";
-        imageIndex = 4;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 20;
-        name = "Cedar Heights Dhanaulti";
-        city = "Dhanaulti";
-        description = "Suite | Premium cedar-clad suites, mountain air";
-        starRating = 5;
-        pricePerNight = 4999;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Ridge Top, Dhanaulti";
-        imageIndex = 5;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 21;
-        name = "Doon Budget Inn";
-        city = "Dehradun";
-        description = "Standard | Affordable city stay near railway station";
-        starRating = 2;
-        pricePerNight = 699;
-        amenities = ["WiFi"];
-        address = "Railway Station Road, Dehradun";
-        imageIndex = 6;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 22;
-        name = "Rajpur Road Residency";
-        city = "Dehradun";
-        description = "Standard | Central location near markets";
-        starRating = 3;
-        pricePerNight = 1199;
-        amenities = ["WiFi", "AC"];
-        address = "Rajpur Road, Dehradun";
-        imageIndex = 7;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 23;
-        name = "Forest Research Inn";
-        city = "Dehradun";
-        description = "Deluxe | Green campus, near FRI and clock tower";
-        starRating = 4;
-        pricePerNight = 2099;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "FRI Campus Area, Dehradun";
-        imageIndex = 8;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 24;
-        name = "Mussoorie Road Hotel";
-        city = "Dehradun";
-        description = "Deluxe | Gateway to the hills, valley views";
-        starRating = 4;
-        pricePerNight = 1799;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Mussoorie Road, Dehradun";
-        imageIndex = 9;
-        approvalStatus = #Approved;
-      },
-      {
-        id = 25;
-        name = "Doon Valley Grand";
-        city = "Dehradun";
-        description = "Suite | Luxury suites with Doon Valley panorama";
-        starRating = 5;
-        pricePerNight = 3999;
-        amenities = ["WiFi", "AC", "Parking"];
-        address = "Chakrata Road, Dehradun";
-        imageIndex = 10;
-        approvalStatus = #Approved;
-      },
-    ];
-
-    for (hotel in initialHotels.values()) {
-      hotels.add(hotel.id, hotel);
-      roomInventory.add(
-        hotel.id,
-        { hotelId = hotel.id; roomType = "Standard"; totalRooms = 10; availableRooms = 10 },
-      );
-    };
-
-    nextHotelId := 26;
-  };
-
   func matchesQuery(hotel : Hotel, queryParams : HotelQueryParams) : Bool {
     if (hotel.approvalStatus != #Approved) { return false };
 
@@ -490,16 +306,12 @@ actor {
 
     let minPriceMatch = switch (queryParams.minPrice) {
       case (null) { true };
-      case (?minPrice) {
-        hotel.pricePerNight >= minPrice;
-      };
+      case (?minPrice) { hotel.pricePerNight >= minPrice };
     };
 
     let maxPriceMatch = switch (queryParams.maxPrice) {
       case (null) { true };
-      case (?maxPrice) {
-        hotel.pricePerNight <= maxPrice;
-      };
+      case (?maxPrice) { hotel.pricePerNight <= maxPrice };
     };
 
     let amenitiesMatch = switch (queryParams.amenities) {
@@ -512,12 +324,10 @@ actor {
     cityMatch and minPriceMatch and maxPriceMatch and amenitiesMatch;
   };
 
-  // Public query - no authentication required
   public query func searchHotels(queryParams : HotelQueryParams) : async [Hotel] {
     hotels.values().toArray().filter(func(h) { matchesQuery(h, queryParams) });
   };
 
-  // Public query - no authentication required
   public query func getHotel(id : Nat) : async Hotel {
     switch (hotels.get(id)) {
       case (null) { Runtime.trap("Hotel not found") };
@@ -525,7 +335,6 @@ actor {
     };
   };
 
-  // Admin only
   public query ({ caller }) func getHotelsForAdmin() : async [Hotel] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can view all hotels");
@@ -533,7 +342,6 @@ actor {
     hotels.values().toArray();
   };
 
-  // Admin only
   public shared ({ caller }) func approveHotel(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can approve hotels");
@@ -559,7 +367,6 @@ actor {
     };
   };
 
-  // Admin only
   public shared ({ caller }) func rejectHotel(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can reject hotels");
@@ -585,7 +392,6 @@ actor {
     };
   };
 
-  // Admin only - suspends hotel by setting status to Rejected
   public shared ({ caller }) func suspendHotel(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can suspend hotels");
@@ -611,7 +417,6 @@ actor {
     };
   };
 
-  // User only
   public shared ({ caller }) func createBooking(
     hotelId : Nat,
     guestName : Text,
@@ -671,7 +476,6 @@ actor {
     newId;
   };
 
-  // Admin only
   public query ({ caller }) func getBookingsByEmail(email : Text) : async [Booking] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admins can get bookings by email");
@@ -680,7 +484,6 @@ actor {
     bookings.values().toArray().filter(func(b) { b.guestEmail == email });
   };
 
-  // User only (own bookings or admin)
   public query ({ caller }) func getBooking(id : Nat) : async Booking {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view bookings");
@@ -697,7 +500,6 @@ actor {
     };
   };
 
-  // User only (own bookings or admin)
   public shared ({ caller }) func cancelBooking(id : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can cancel bookings");
@@ -741,7 +543,6 @@ actor {
     };
   };
 
-  // User only
   public shared ({ caller }) func submitPropertyListing(
     ownerName : Text,
     ownerPhone : Text,
@@ -784,7 +585,6 @@ actor {
     newId;
   };
 
-  // Admin only
   public query ({ caller }) func getPropertyListings() : async [PropertyListing] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can see all listings");
@@ -792,7 +592,6 @@ actor {
     propertyListings.values().toArray();
   };
 
-  // User only (own listings)
   public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view their listings");
@@ -800,7 +599,6 @@ actor {
     propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
-  // Admin only
   public shared ({ caller }) func approvePropertyListing(listingId : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can approve listings");
@@ -861,7 +659,6 @@ actor {
     };
   };
 
-  // Admin only
   public shared ({ caller }) func rejectPropertyListing(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can reject listings");
@@ -892,7 +689,6 @@ actor {
     };
   };
 
-  // Admin only
   public query ({ caller }) func getAllBookings() : async [Booking] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admins can access all bookings");
@@ -900,7 +696,6 @@ actor {
     bookings.values().toArray();
   };
 
-  // User only (own bookings)
   public query ({ caller }) func getMyBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view bookings.");
@@ -911,7 +706,6 @@ actor {
     );
   };
 
-  // Admin only
   public shared ({ caller }) func assignHotelOwner(hotelId : Nat, ownerPrincipal : Principal) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can assign hotel owners");
@@ -924,7 +718,6 @@ actor {
     };
   };
 
-  // Admin only
   public shared ({ caller }) func revokeHotelOwner(hotelId : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can revoke hotel owners");
@@ -939,7 +732,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public query ({ caller }) func getOwnerHotel() : async Hotel {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -960,7 +752,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public query ({ caller }) func getOwnerBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -980,7 +771,6 @@ actor {
     };
   };
 
-  // Hotel owner only (for their hotel's bookings)
   public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1061,7 +851,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public query ({ caller }) func getOwnerRoomInventory() : async RoomInventory {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1082,7 +871,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public shared ({ caller }) func updateRoomInventory(roomType : Text, totalRooms : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1110,7 +898,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public query ({ caller }) func getBlockedDates() : async [BlockedDate] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1131,7 +918,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public shared ({ caller }) func blockDate(date : Text, reason : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1156,7 +942,6 @@ actor {
     };
   };
 
-  // Hotel owner only
   public shared ({ caller }) func unblockDate(blockedDateId : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1182,5 +967,10 @@ actor {
     };
   };
 
-  initializeHotels();
+  public query ({ caller }) func isCallerHotelOwner() : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      return false;
+    };
+    hotelOwners.containsKey(caller);
+  };
 };

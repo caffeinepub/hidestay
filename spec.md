@@ -2,49 +2,45 @@
 
 ## Current State
 
-- Super Admin Panel has a Bookings tab that calls `getAllBookings()` which returns raw `Booking[]`
-- `Booking` type has: id, hotelId, guestName, guestEmail, phone, checkIn, checkOut, guestCount, status, created, owner
-- The BookingsTab currently shows: guest name, email, phone, Hotel #ID (not name), check-in/out, guest count, booking ID, status badge
-- Missing fields: hotel name, hotel city, total amount, payment mode, booking date formatted, city filter
-- The backend has no enriched booking view — hotel info requires a separate lookup
-- `getAllBookings()` returns bookings unsorted (frontend sorts by `created` desc)
+The app is a hotel booking platform for Uttarakhand with:
+- Internet Identity (II) login used for all users (customers, admins, hotel owners)
+- A `CustomerProfile` type in the backend with `name`, `email`, `phone` fields
+- `saveCallerUserProfile` / `getCallerUserProfile` / `getUserProfile` backend calls
+- Mobile OTP login code that was attempted in a previous build but the II system is the active auth
+- No dedicated customer profile page (no `/profile` route)
+- My Bookings is accessed via a header button
+- Super Admin Panel, Hotel Owner Dashboard, and Booking flows all use II identity
 
 ## Requested Changes (Diff)
 
 ### Add
-- New `AdminBookingView` type in Motoko: all Booking fields + hotelName, hotelCity, totalAmount (pricePerNight * nights), paymentMode (hardcoded "Pay at Hotel")
-- New `getAdminBookings()` backend endpoint that returns `[AdminBookingView]` sorted by created desc, joining hotel data for each booking
-- City filter dropdown in BookingsTab (derived from unique cities in loaded bookings)
-- Status filter (already exists, keep)
-- Total amount column computed from hotel pricePerNight and number of nights between checkIn and checkOut
-- Display hotel name and city per booking row
-- Display number of guests
-- Display total amount with ₹ formatting
-- Display payment mode badge ("Pay at Hotel")
-- Display booking ID and booking date
+- Email + password login system for customers (stored in backend as `CustomerProfile` with hashed password)
+- `CustomerProfile` type with: `name`, `email`, `passwordHash` (internal), `memberSince`
+- Backend functions: `registerCustomer`, `loginCustomer` (returns session token), `getMyCustomerProfile`, `updateCustomerProfile`, `changePassword`
+- Customer Profile Page with: display name, email, member-since date, change password form, link to My Bookings
+- Auth state stored in React context/localStorage (session token approach, no II changes for customer flow)
+- "Sign In / Sign Up" modal in header for email+password customer authentication
+- Logout button on profile page
 
 ### Modify
-- BookingsTab: replace Hotel #ID display with hotel name + city
-- BookingsTab: add total amount, payment mode, booking date fields to each card
-- BookingsTab: add city filter dropdown
-- BookingsTab: ensure data comes from `getAdminBookings()` (new enriched endpoint) instead of `getAllBookings()`
-- backend.d.ts: add `AdminBookingView` interface and `getAdminBookings()` method
+- Replace any mobile OTP login UI with simple email + password form
+- Header: replace old auth button with new Sign In / My Profile button that opens the customer auth modal or profile page
+- Booking flow: use customer session (email+password) rather than requiring II for customer bookings
+- The existing Internet Identity login is kept for Admin and Hotel Owner access only
 
 ### Remove
-- Nothing removed
+- All mobile OTP related code (sendSignupOtp, sendMobileOtp, verifyMobileOtp, loginWithMobileOtp, OTP state)
+- Any `CustomerProfile.mobile` / `CustomerProfile.phone` fields used for OTP
+- Frontend OTP input forms and OTP step-by-step signup flows
 
 ## Implementation Plan
 
-1. Add `AdminBookingView` type to `main.mo` with hotelName, hotelCity, totalAmount (Int), paymentMode (Text)
-2. Add `getAdminBookings()` query function to `main.mo` — admin-only, joins hotel data, computes totalAmount from nights * pricePerNight, sorts by created desc
-3. Update `backend.d.ts` to add `AdminBookingView` interface and `getAdminBookings()` method signature
-4. Update `SuperAdminPanel.tsx` BookingsTab:
-   - Change data type from `Booking[]` to `AdminBookingView[]`
-   - Replace `hotelId` display with `hotelName` + `hotelCity`
-   - Add total amount display
-   - Add "Pay at Hotel" payment mode badge
-   - Add city filter dropdown (unique cities from loaded bookings)
-   - Keep status filter
-   - Add booking date formatted display
-   - Ensure sorted latest first (backend handles this, frontend preserves order)
-5. Update main SuperAdminPanel query to use `getAdminBookings()` instead of `getAllBookings()`
+1. **Backend**: Replace old CustomerProfile type. Add `name`, `email`, `passwordHash`, `memberSince` fields. Implement `registerCustomer(name, email, password)`, `loginCustomer(email, password)` returning a session token (simple Text), `getMyCustomerProfile()` — caller-based (II identity), `updateCustomerProfile(name, email)`, `changePassword(oldPassword, newPassword)`. Remove OTP functions.
+
+2. **Frontend auth context**: Create a `useCustomerAuth` hook that stores session state. Since the backend uses II principal for "caller", customers still authenticate via II but the profile data (name, email, password) is stored in the backend under their principal. The login UI collects email + password and calls `loginCustomer` to validate; if valid, marks the user as logged in in local state.
+
+3. **Sign In / Sign Up modal**: Email + password fields only. Sign Up collects name, email, password, confirm password. No OTP step.
+
+4. **Customer Profile Page**: Full-page view accessible from header when logged in. Shows name, email, member since. Edit profile form. Change password form (requires current password). "My Bookings" link/button.
+
+5. **Booking flow**: Customers must be signed in (II + email profile) to book. Auto-fill name/email from profile.
