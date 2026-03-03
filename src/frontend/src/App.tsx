@@ -4946,6 +4946,7 @@ function AppInner() {
   const [superAdminOpen, setSuperAdminOpen] = useState(
     () => window.location.pathname === "/admin",
   );
+  const [adminOtpVerified, setAdminOtpVerified] = useState(false);
   const [myBookingsPanelOpen, setMyBookingsPanelOpen] = useState(false);
   const [ownerDashboardOpen, setOwnerDashboardOpen] = useState(false);
 
@@ -4966,6 +4967,7 @@ function AppInner() {
   const closeAdminPanel = useCallback(() => {
     history.pushState({}, "", "/");
     setSuperAdminOpen(false);
+    setAdminOtpVerified(false);
   }, []);
 
   // ── Auth
@@ -5344,6 +5346,8 @@ function AppInner() {
         onClose={closeAdminPanel}
         actor={actor}
         isAdmin={isAdmin}
+        isOtpVerified={adminOtpVerified}
+        onOtpVerified={() => setAdminOtpVerified(true)}
       />
 
       {/* My Bookings Panel */}

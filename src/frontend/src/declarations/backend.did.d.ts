@@ -111,6 +111,11 @@ export interface _SERVICE {
     [bigint, string, string, string, string, string, bigint, bigint],
     bigint
   >,
+  'generateAdminOtp' : ActorMethod<[], string>,
+  'getAdminLockStatus' : ActorMethod<
+    [],
+    { 'locked' : boolean, 'failedAttempts' : bigint }
+  >,
   'getAllBookings' : ActorMethod<[], Array<Booking>>,
   'getBlockedDates' : ActorMethod<[], Array<BlockedDate>>,
   'getBooking' : ActorMethod<[bigint], Booking>,
@@ -163,6 +168,7 @@ export interface _SERVICE {
   >,
   'suspendHotel' : ActorMethod<[bigint], undefined>,
   'unblockDate' : ActorMethod<[bigint], undefined>,
+  'unlockAdminAccount' : ActorMethod<[Principal], undefined>,
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
   'updateCustomerProfile' : ActorMethod<
     [string, string, string],
@@ -170,6 +176,11 @@ export interface _SERVICE {
       { 'error' : string }
   >,
   'updateRoomInventory' : ActorMethod<[string, bigint], undefined>,
+  'verifyAdminOtp' : ActorMethod<
+    [string],
+    { 'ok' : string } |
+      { 'error' : string }
+  >,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

@@ -128,6 +128,12 @@ export const idlService = IDL.Service({
       [IDL.Nat],
       [],
     ),
+  'generateAdminOtp' : IDL.Func([], [IDL.Text], []),
+  'getAdminLockStatus' : IDL.Func(
+      [],
+      [IDL.Record({ 'locked' : IDL.Bool, 'failedAttempts' : IDL.Nat })],
+      ['query'],
+    ),
   'getAllBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
   'getBlockedDates' : IDL.Func([], [IDL.Vec(BlockedDate)], ['query']),
   'getBooking' : IDL.Func([IDL.Nat], [Booking], ['query']),
@@ -185,6 +191,7 @@ export const idlService = IDL.Service({
     ),
   'suspendHotel' : IDL.Func([IDL.Nat], [], []),
   'unblockDate' : IDL.Func([IDL.Nat], [], []),
+  'unlockAdminAccount' : IDL.Func([IDL.Principal], [], []),
   'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
   'updateCustomerProfile' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text],
@@ -192,6 +199,11 @@ export const idlService = IDL.Service({
       [],
     ),
   'updateRoomInventory' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'verifyAdminOtp' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
+      [],
+    ),
 });
 
 export const idlInitArgs = [];
@@ -317,6 +329,12 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Nat],
         [],
       ),
+    'generateAdminOtp' : IDL.Func([], [IDL.Text], []),
+    'getAdminLockStatus' : IDL.Func(
+        [],
+        [IDL.Record({ 'locked' : IDL.Bool, 'failedAttempts' : IDL.Nat })],
+        ['query'],
+      ),
     'getAllBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
     'getBlockedDates' : IDL.Func([], [IDL.Vec(BlockedDate)], ['query']),
     'getBooking' : IDL.Func([IDL.Nat], [Booking], ['query']),
@@ -382,6 +400,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'suspendHotel' : IDL.Func([IDL.Nat], [], []),
     'unblockDate' : IDL.Func([IDL.Nat], [], []),
+    'unlockAdminAccount' : IDL.Func([IDL.Principal], [], []),
     'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
     'updateCustomerProfile' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text],
@@ -389,6 +408,11 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'updateRoomInventory' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'verifyAdminOtp' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
+        [],
+      ),
   });
 };
 

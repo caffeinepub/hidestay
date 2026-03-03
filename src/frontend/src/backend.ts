@@ -197,6 +197,11 @@ export interface backendInterface {
         error: string;
     }>;
     createBooking(hotelId: bigint, guestName: string, guestEmail: string, phone: string, checkIn: string, checkOut: string, guestCount: bigint, created: bigint): Promise<bigint>;
+    generateAdminOtp(): Promise<string>;
+    getAdminLockStatus(): Promise<{
+        locked: boolean;
+        failedAttempts: bigint;
+    }>;
     getAllBookings(): Promise<Array<Booking>>;
     getBlockedDates(): Promise<Array<BlockedDate>>;
     getBooking(id: bigint): Promise<Booking>;
@@ -237,6 +242,7 @@ export interface backendInterface {
     submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
+    unlockAdminAccount(target: Principal): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateCustomerProfile(name: string, email: string, mobile: string): Promise<{
         __kind__: "ok";
@@ -246,6 +252,13 @@ export interface backendInterface {
         error: string;
     }>;
     updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;
+    verifyAdminOtp(code: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
 }
 import type { Booking as _Booking, CustomerProfile as _CustomerProfile, Hotel as _Hotel, HotelApprovalStatus as _HotelApprovalStatus, HotelQueryParams as _HotelQueryParams, PropertyListing as _PropertyListing, PropertyListingStatus as _PropertyListingStatus, Status as _Status, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -379,6 +392,37 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.createBooking(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            return result;
+        }
+    }
+    async generateAdminOtp(): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.generateAdminOtp();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.generateAdminOtp();
+            return result;
+        }
+    }
+    async getAdminLockStatus(): Promise<{
+        locked: boolean;
+        failedAttempts: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAdminLockStatus();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAdminLockStatus();
             return result;
         }
     }
@@ -786,6 +830,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async unlockAdminAccount(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.unlockAdminAccount(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.unlockAdminAccount(arg0);
+            return result;
+        }
+    }
     async updateBookingStatus(arg0: bigint, arg1: Status): Promise<void> {
         if (this.processError) {
             try {
@@ -832,6 +890,26 @@ export class Backend implements backendInterface {
         } else {
             const result = await this.actor.updateRoomInventory(arg0, arg1);
             return result;
+        }
+    }
+    async verifyAdminOtp(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.verifyAdminOtp(arg0);
+                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.verifyAdminOtp(arg0);
+            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
         }
     }
 }

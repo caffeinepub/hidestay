@@ -1,6 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -41,6 +46,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  ShieldPlus,
   Star,
   TrendingUp,
   User,
@@ -50,7 +56,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type {
   Booking,
@@ -73,6 +79,8 @@ interface SuperAdminPanelProps {
   onClose: () => void;
   actor: import("../backend").backendInterface | null;
   isAdmin: boolean;
+  isOtpVerified: boolean;
+  onOtpVerified: () => void;
 }
 
 type AdminTab = "dashboard" | "hotels" | "bookings" | "users" | "subscriptions";
@@ -1055,6 +1063,7 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
   const queryClient = useQueryClient();
   const [principalInput, setPrincipalInput] = useState("");
   const [selectedRole, setSelectedRole] = useState<string>("");
+  const [unlockPrincipalInput, setUnlockPrincipalInput] = useState("");
 
   const { data: myRole } = useQuery<UserRole>({
     queryKey: ["my-role"],
@@ -1090,6 +1099,23 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
     },
   });
 
+  const { mutate: unlockAdmin, isPending: unlockPending } = useMutation({
+    mutationFn: async (principal: string) => {
+      if (!actor) throw new Error("Not connected");
+      const { Principal } = await import("@icp-sdk/core/principal");
+      const p = Principal.fromText(principal);
+      await actor.unlockAdminAccount(p as unknown as Principal);
+    },
+    onSuccess: () => {
+      toast.success("Admin account unlocked successfully.");
+      setUnlockPrincipalInput("");
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to unlock account: ${msg}`);
+    },
+  });
+
   const handleAssign = () => {
     if (!principalInput.trim()) {
       toast.error("Please enter a principal ID.");
@@ -1103,6 +1129,14 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
       principal: principalInput.trim(),
       role: selectedRole as UserRole,
     });
+  };
+
+  const handleUnlock = () => {
+    if (!unlockPrincipalInput.trim()) {
+      toast.error("Please enter the locked admin's principal ID.");
+      return;
+    }
+    unlockAdmin(unlockPrincipalInput.trim());
   };
 
   const roleLabel = (role: UserRole) => {
@@ -1243,6 +1277,54 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
               <ShieldCheck className="w-4 h-4" />
             )}
             {assignPending ? "Assigning…" : "Assign Role"}
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Unlock Admin Account */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Lock className="w-4 h-4 text-muted-foreground" />
+          <h3 className="font-semibold text-sm text-foreground">
+            Unlock Admin Account
+          </h3>
+        </div>
+        <div className="rounded-xl border border-border bg-red-50/30 p-4 flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-800 leading-relaxed">
+            An admin account is locked after 5 consecutive failed OTP
+            verification attempts. Enter the locked admin's principal ID to
+            unlock their account. You cannot unlock your own account.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">
+              Locked Admin Principal ID
+            </Label>
+            <Input
+              data-ocid="super_admin.users.unlock_principal_input"
+              value={unlockPrincipalInput}
+              onChange={(e) => setUnlockPrincipalInput(e.target.value)}
+              placeholder="e.g. 2vxsx-fae or rdmx6-jaaaa-aaaaa-aaadq-cai"
+              className="font-mono text-sm"
+            />
+          </div>
+          <Button
+            data-ocid="super_admin.users.unlock_button"
+            onClick={handleUnlock}
+            disabled={unlockPending}
+            variant="outline"
+            className="w-full border-red-200 text-red-700 hover:bg-red-50 font-semibold gap-2"
+          >
+            {unlockPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Lock className="w-4 h-4" />
+            )}
+            {unlockPending ? "Unlocking…" : "Unlock Account"}
           </Button>
         </div>
       </div>
@@ -1456,6 +1538,378 @@ function SubscriptionsTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Admin OTP Gate
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AdminOtpGateProps {
+  actor: import("../backend").backendInterface | null;
+  onOtpVerified: () => void;
+}
+
+const OTP_RESEND_COOLDOWN = 60;
+
+function AdminOtpGate({ actor, onOtpVerified }: AdminOtpGateProps) {
+  const [otpValue, setOtpValue] = useState("");
+  const [demoCode, setDemoCode] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isCheckingLock, setIsCheckingLock] = useState(true);
+
+  const triggerCooldown = () => {
+    setCooldown(OTP_RESEND_COOLDOWN);
+    timerRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Generate OTP on mount (and when actor becomes available)
+  useEffect(() => {
+    if (!actor) return;
+    let cancelled = false;
+
+    const run = async () => {
+      setIsCheckingLock(true);
+      setIsGenerating(true);
+      setErrorMsg(null);
+      setOtpValue("");
+      try {
+        // First check if account is locked
+        const lockStatus = await actor.getAdminLockStatus();
+        if (cancelled) return;
+        if (lockStatus.locked) {
+          setIsLocked(true);
+          setFailedAttempts(Number(lockStatus.failedAttempts));
+          return;
+        }
+
+        // Not locked — proceed with OTP generation
+        const code = await actor.generateAdminOtp();
+        if (!cancelled) {
+          setDemoCode(code);
+          setCooldown(OTP_RESEND_COOLDOWN);
+          timerRef.current = setInterval(() => {
+            setCooldown((prev) => {
+              if (prev <= 1) {
+                clearInterval(timerRef.current!);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const msg =
+            err instanceof Error ? err.message : "Failed to generate OTP";
+          toast.error(msg);
+          setErrorMsg(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsGenerating(false);
+          setIsCheckingLock(false);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [actor]);
+
+  const generateOtp = async () => {
+    if (!actor) return;
+    setIsGenerating(true);
+    setErrorMsg(null);
+    setOtpValue("");
+    try {
+      const code = await actor.generateAdminOtp();
+      setDemoCode(code);
+      triggerCooldown();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to generate OTP";
+      toast.error(msg);
+      setErrorMsg(msg);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    if (otpValue.length !== 6 || !actor) return;
+    setIsVerifying(true);
+    setErrorMsg(null);
+    try {
+      const result = await actor.verifyAdminOtp(otpValue);
+      if (result.__kind__ === "ok") {
+        setFailedAttempts(0);
+        toast.success("Identity verified. Welcome to the Admin Panel.");
+        onOtpVerified();
+      } else {
+        const errMessage = result.error ?? "Invalid OTP. Please try again.";
+        // Check if account just got locked
+        if (errMessage.toLowerCase().includes("locked")) {
+          setIsLocked(true);
+          setFailedAttempts(5);
+          toast.error(errMessage);
+        } else {
+          // Try to extract remaining attempts from message (e.g., "X attempts remaining")
+          const remainingMatch = errMessage.match(
+            /(\d+)\s+attempts?\s+remaining/i,
+          );
+          if (remainingMatch) {
+            const remaining = Number.parseInt(remainingMatch[1], 10);
+            setFailedAttempts(5 - remaining);
+          }
+          setErrorMsg(errMessage);
+          setOtpValue("");
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      setErrorMsg(msg);
+      setOtpValue("");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  return (
+    <motion.div
+      data-ocid="admin_otp.gate_section"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="flex-1 flex items-center justify-center p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-0 overflow-y-auto"
+    >
+      <div className="w-full max-w-md">
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          {/* Card Header */}
+          <div
+            className={`bg-gradient-to-br px-6 py-6 text-center ${isLocked ? "from-red-700 to-red-900" : "from-slate-800 to-slate-900"}`}
+          >
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 20,
+                delay: 0.1,
+              }}
+              className={`w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto mb-4 ${isLocked ? "bg-white/10 border-white/20" : "bg-white/10 border-white/20"}`}
+            >
+              {isLocked ? (
+                <Lock className="w-8 h-8 text-white" />
+              ) : (
+                <ShieldPlus className="w-8 h-8 text-white" />
+              )}
+            </motion.div>
+            <h2 className="font-display text-xl font-bold text-white mb-1">
+              {isLocked ? "Account Locked" : "Admin Verification Required"}
+            </h2>
+            <p className="text-white/60 text-sm leading-relaxed">
+              {isLocked
+                ? "Too many failed verification attempts"
+                : "Enter the 6-digit code to access the Super Admin Panel"}
+            </p>
+          </div>
+
+          {/* Card Body */}
+          <div className="px-6 py-6 space-y-5">
+            {/* Checking lock status spinner */}
+            {isCheckingLock && (
+              <div
+                data-ocid="admin_otp.loading_state"
+                className="flex flex-col items-center gap-3 py-4"
+              >
+                <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
+                <p className="text-sm text-muted-foreground">
+                  Checking account status…
+                </p>
+              </div>
+            )}
+
+            {/* Locked state */}
+            {!isCheckingLock && isLocked && (
+              <div
+                data-ocid="admin_otp.locked_state"
+                className="flex flex-col items-center gap-4 py-6 text-center"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-red-100 border border-red-200 flex items-center justify-center">
+                  <Lock className="w-8 h-8 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground mb-1">
+                    Account Locked
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
+                    Your account has been locked after 5 failed OTP attempts.
+                    Contact another Super Admin to unlock your account.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-700 font-medium">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>5 / 5 failed attempts</span>
+                </div>
+              </div>
+            )}
+
+            {/* Normal OTP flow — only shown when not locked and not checking */}
+            {!isCheckingLock && !isLocked && (
+              <>
+                {/* Loading state (generating OTP) */}
+                {isGenerating && (
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
+                    <p className="text-sm text-muted-foreground">
+                      Generating your verification code…
+                    </p>
+                  </div>
+                )}
+
+                {/* Demo OTP Banner */}
+                {!isGenerating && demoCode && (
+                  <motion.div
+                    data-ocid="admin_otp.demo_banner"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5"
+                  >
+                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-amber-800 text-sm font-semibold mb-0.5">
+                        Demo Mode — OTP Generated
+                      </p>
+                      <p className="text-amber-700 text-sm">
+                        Your OTP is:{" "}
+                        <span className="font-bold font-mono text-amber-900 text-base tracking-widest">
+                          {demoCode}
+                        </span>
+                      </p>
+                      <p className="text-amber-600 text-xs mt-1">
+                        In production, this would be sent via SMS/email.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Error state */}
+                <AnimatePresence>
+                  {errorMsg && (
+                    <motion.div
+                      data-ocid="admin_otp.error_state"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3"
+                    >
+                      <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                      <p className="text-red-700 text-sm font-medium">
+                        {errorMsg}
+                        {failedAttempts > 0 && failedAttempts < 5 && (
+                          <span className="ml-1 font-semibold">
+                            ({failedAttempts}/5 failed)
+                          </span>
+                        )}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* OTP Input */}
+                {!isGenerating && (
+                  <div className="flex flex-col items-center gap-3">
+                    <Label className="text-sm font-semibold text-foreground self-start">
+                      Enter 6-digit code
+                    </Label>
+                    <InputOTP
+                      data-ocid="admin_otp.otp_input"
+                      maxLength={6}
+                      value={otpValue}
+                      onChange={setOtpValue}
+                    >
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} />
+                        <InputOTPSlot index={1} />
+                        <InputOTPSlot index={2} />
+                        <InputOTPSlot index={3} />
+                        <InputOTPSlot index={4} />
+                        <InputOTPSlot index={5} />
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+                )}
+
+                {/* Verify Button */}
+                {!isGenerating && (
+                  <Button
+                    data-ocid="admin_otp.verify_button"
+                    onClick={handleVerify}
+                    disabled={otpValue.length !== 6 || isVerifying}
+                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] gap-2 disabled:opacity-50"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Verifying…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        Verify Access
+                      </>
+                    )}
+                  </Button>
+                )}
+              </>
+            )}
+
+            {/* Resend OTP — only shown when not locked and not checking */}
+            {!isCheckingLock && !isLocked && !isGenerating && (
+              <div className="text-center">
+                <Button
+                  data-ocid="admin_otp.resend_button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={generateOtp}
+                  disabled={cooldown > 0 || isGenerating}
+                  className="text-muted-foreground hover:text-foreground text-sm gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Resend OTP"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer note */}
+        <p className="text-center text-xs text-muted-foreground mt-4 leading-relaxed">
+          This verification step protects the Super Admin Panel from
+          unauthorized access.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Access Denied Screen
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1500,6 +1954,8 @@ export function SuperAdminPanel({
   onClose,
   actor,
   isAdmin,
+  isOtpVerified,
+  onOtpVerified,
 }: SuperAdminPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
@@ -1704,6 +2160,8 @@ export function SuperAdminPanel({
           {/* Body */}
           {!isAdmin ? (
             <AccessDenied onClose={onClose} />
+          ) : !isOtpVerified ? (
+            <AdminOtpGate actor={actor} onOtpVerified={onOtpVerified} />
           ) : (
             <Tabs
               value={activeTab}

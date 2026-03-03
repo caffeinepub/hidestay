@@ -114,6 +114,11 @@ export interface backendInterface {
         error: string;
     }>;
     createBooking(hotelId: bigint, guestName: string, guestEmail: string, phone: string, checkIn: string, checkOut: string, guestCount: bigint, created: bigint): Promise<bigint>;
+    generateAdminOtp(): Promise<string>;
+    getAdminLockStatus(): Promise<{
+        locked: boolean;
+        failedAttempts: bigint;
+    }>;
     getAllBookings(): Promise<Array<Booking>>;
     getBlockedDates(): Promise<Array<BlockedDate>>;
     getBooking(id: bigint): Promise<Booking>;
@@ -154,6 +159,7 @@ export interface backendInterface {
     submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
+    unlockAdminAccount(target: Principal): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateCustomerProfile(name: string, email: string, mobile: string): Promise<{
         __kind__: "ok";
@@ -163,4 +169,11 @@ export interface backendInterface {
         error: string;
     }>;
     updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;
+    verifyAdminOtp(code: string): Promise<{
+        __kind__: "ok";
+        ok: string;
+    } | {
+        __kind__: "error";
+        error: string;
+    }>;
 }

@@ -3,45 +3,29 @@ import Nat "mo:core/Nat";
 import Principal "mo:core/Principal";
 
 module {
-  type OldCustomerProfile = {
-    name : Text;
-    email : Text;
-    passwordHash : Text;
-    memberSince : Int;
+  type OtpEntry = {
+    code : Text;
+    expiresAt : Int;
   };
 
   type OldActor = {
-    customerProfiles : Map.Map<Principal, OldCustomerProfile>;
-    emailToPrincipal : Map.Map<Text, Principal>;
-  };
-
-  type NewCustomerProfile = {
-    name : Text;
-    email : Text;
-    mobile : Text;
-    passwordHash : Text;
-    memberSince : Int;
+    adminOtps : Map.Map<Principal, OtpEntry>;
+    // ... other existing state ...
   };
 
   type NewActor = {
-    customerProfiles : Map.Map<Principal, NewCustomerProfile>;
-    emailToPrincipal : Map.Map<Text, Principal>;
-    mobileToPrincipal : Map.Map<Text, Principal>;
+    adminOtps : Map.Map<Principal, OtpEntry>;
+    adminLoginAttempts : Map.Map<Principal, Nat>;
+    adminLockedAccounts : Map.Map<Principal, Bool>;
+    // ... other existing state ...
   };
 
   public func run(old : OldActor) : NewActor {
-    let newCustomerProfiles = old.customerProfiles.map<Principal, OldCustomerProfile, NewCustomerProfile>(
-      func(_principal, oldProfile) {
-        { oldProfile with mobile = "" };
-      }
-    );
-
-    let mobileToPrincipal = Map.empty<Text, Principal>();
-
     {
-      customerProfiles = newCustomerProfiles;
-      emailToPrincipal = old.emailToPrincipal;
-      mobileToPrincipal;
+      adminOtps = old.adminOtps;
+      adminLoginAttempts = Map.empty<Principal, Nat>();
+      adminLockedAccounts = Map.empty<Principal, Bool>();
+      // ... assign other existing fields ...
     };
   };
 };

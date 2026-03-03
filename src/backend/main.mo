@@ -5,12 +5,27 @@ import Array "mo:core/Array";
 import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
+import Time "mo:core/Time";
 import Migration "migration";
+
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
 (with migration = Migration.run)
 actor {
+  type OtpEntry = {
+    code : Text;
+    expiresAt : Int;
+  };
+
+  var otpCounter = 0;
+  let adminOtps = Map.empty<Principal, OtpEntry>();
+
+  // New for limiting admin login attempts
+  let adminLoginAttempts = Map.empty<Principal, Nat>();
+  let adminLockedAccounts = Map.empty<Principal, Bool>();
+  let MAX_ADMIN_LOGIN_ATTEMPTS : Nat = 5;
+
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
@@ -55,7 +70,12 @@ actor {
   let emailToPrincipal = Map.empty<Text, Principal>();
   let mobileToPrincipal = Map.empty<Text, Principal>();
 
-  public shared ({ caller }) func registerCustomer(name : Text, email : Text, mobile : Text, password : Text) : async {
+  public shared ({ caller }) func registerCustomer(
+    name : Text,
+    email : Text,
+    mobile : Text,
+    password : Text,
+  ) : async {
     #ok : Text;
     #error : Text;
   } {
@@ -121,7 +141,11 @@ actor {
     customerProfiles.get(caller);
   };
 
-  public shared ({ caller }) func updateCustomerProfile(name : Text, email : Text, mobile : Text) : async {
+  public shared ({ caller }) func updateCustomerProfile(
+    name : Text,
+    email : Text,
+    mobile : Text,
+  ) : async {
     #ok : Text;
     #error : Text;
   } {
@@ -178,7 +202,10 @@ actor {
     };
   };
 
-  public shared ({ caller }) func changePassword(oldPassword : Text, newPassword : Text) : async {
+  public shared ({ caller }) func changePassword(
+    oldPassword : Text,
+    newPassword : Text,
+  ) : async {
     #ok : Text;
     #error : Text;
   } {
@@ -740,7 +767,10 @@ actor {
     );
   };
 
-  public shared ({ caller }) func assignHotelOwner(hotelId : Nat, ownerPrincipal : Principal) : async () {
+  public shared ({ caller }) func assignHotelOwner(
+    hotelId : Nat,
+    ownerPrincipal : Principal,
+  ) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can assign hotel owners");
     };
@@ -805,7 +835,10 @@ actor {
     };
   };
 
-  public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
+  public shared ({ caller }) func updateBookingStatus(
+    bookingId : Nat,
+    newStatus : Status,
+  ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -905,7 +938,10 @@ actor {
     };
   };
 
-  public shared ({ caller }) func updateRoomInventory(roomType : Text, totalRooms : Nat) : async () {
+  public shared ({ caller }) func updateRoomInventory(
+    roomType : Text,
+    totalRooms : Nat,
+  ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -952,7 +988,10 @@ actor {
     };
   };
 
-  public shared ({ caller }) func blockDate(date : Text, reason : Text) : async () {
+  public shared ({ caller }) func blockDate(
+    date : Text,
+    reason : Text,
+  ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -1006,5 +1045,116 @@ actor {
       return false;
     };
     hotelOwners.containsKey(caller);
+  };
+
+  public shared ({ caller }) func generateAdminOtp() : async Text {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can generate OTP");
+    };
+
+    otpCounter += 1;
+    let value = ((otpCounter * 1_000_003) + Time.now()) % 1_000_000;
+    let code = padToSixDigits(value.toText());
+    let expiresAt = Time.now() + (10 * 60 * 1_000_000_000);
+
+    let otpEntry : OtpEntry = {
+      code;
+      expiresAt;
+    };
+
+    adminOtps.add(caller, otpEntry);
+    code;
+  };
+
+  public shared ({ caller }) func verifyAdminOtp(code : Text) : async {
+    #ok : Text;
+    #error : Text;
+  } {
+    // Note: This function should NOT require admin permission check
+    // because it's part of the authentication flow itself.
+    // The OTP verification is the authentication mechanism.
+    // However, we need to verify that an OTP was generated for this principal.
+
+    switch (adminLockedAccounts.get(caller)) {
+      case (?true) {
+        return #error("Account locked. Too many failed attempts. Contact another super admin to unlock.");
+      };
+      case (_) {};
+    };
+
+    switch (adminOtps.get(caller)) {
+      case (null) {
+        // No OTP exists for this caller - they may not be an admin or haven't generated OTP
+        adminLoginAttempts.add(caller, 1);
+        #error("Invalid OTP. 4 attempts remaining.");
+      };
+      case (?entry) {
+        let now = Time.now();
+        if (now > entry.expiresAt) {
+          adminOtps.remove(caller);
+          #error("OTP expired");
+        } else if (code == entry.code) {
+          adminLoginAttempts.remove(caller);
+          adminOtps.remove(caller);
+          #ok("Verified");
+        } else {
+          let currentCount = switch (adminLoginAttempts.get(caller)) {
+            case (null) { 0 };
+            case (?count) { count };
+          };
+          let newCount = currentCount + 1;
+          adminLoginAttempts.add(caller, newCount);
+
+          if (newCount >= MAX_ADMIN_LOGIN_ATTEMPTS) {
+            adminLockedAccounts.add(caller, true);
+            adminLoginAttempts.remove(caller);
+            return #error("Account locked after 5 failed attempts. Contact another super admin to unlock.");
+          } else {
+            let remainingAttempts = MAX_ADMIN_LOGIN_ATTEMPTS - newCount;
+            return #error("Invalid OTP. " # remainingAttempts.toText() # " attempts remaining.");
+          };
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getAdminLockStatus() : async { locked : Bool; failedAttempts : Nat } {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can access lock status");
+    };
+
+    let locked = switch (adminLockedAccounts.get(caller)) {
+      case (?true) { true };
+      case (_) { false };
+    };
+
+    let failedAttempts = switch (adminLoginAttempts.get(caller)) {
+      case (null) { 0 };
+      case (?count) { count };
+    };
+
+    { locked; failedAttempts };
+  };
+
+  public shared ({ caller }) func unlockAdminAccount(target : Principal) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admins can unlock accounts");
+    };
+
+    if (caller == target) {
+      Runtime.trap("Cannot unlock your own account");
+    };
+
+    adminLockedAccounts.remove(target);
+    adminLoginAttempts.remove(target);
+  };
+
+  func padToSixDigits(s : Text) : Text {
+    let len = s.size();
+    if (len >= 6) { return s };
+
+    let needed = 6 - len;
+    let zeros = Array.repeat("0", needed);
+    zeros.concat([s]).toText();
   };
 };
