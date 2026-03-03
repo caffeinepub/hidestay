@@ -110,6 +110,45 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Auth Input — shared style for all login/signup/profile inputs
+ * Forces solid white background and black text so visibility is always clear,
+ * regardless of browser dark-mode or system theme overrides.
+ * ───────────────────────────────────────────────────────────────────────────── */
+.auth-input {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  border: 1px solid #cccccc !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+.auth-input::placeholder {
+  color: #888888 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #888888 !important;
+}
+.auth-input:focus,
+.auth-input:focus-visible {
+  border-color: #e53935 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(229, 57, 53, 0.18) !important;
+}
+/* Ensure password dots are clearly visible on white background */
+.auth-input[type="password"] {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+/* OTP slot — white bg, black text, red focus ring */
+.auth-otp-slot {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #cccccc !important;
+}
+.auth-otp-slot[data-active="true"] {
+  border-color: #e53935 !important;
+  box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.15) !important;
+}
+
 @layer utilities {
   .font-display {
     font-family: "Mona Sans", sans-serif;

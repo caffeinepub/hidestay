@@ -3574,7 +3574,7 @@ function PasswordInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        className="pl-9 pr-10 rounded-lg border-input"
+        className="auth-input pl-9 pr-10 rounded-lg"
       />
       <button
         type="button"
@@ -3942,7 +3942,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                             }
                             required
                             autoComplete="email"
-                            className="pl-9 rounded-lg border-input"
+                            className="auth-input pl-9 rounded-lg"
                           />
                         </div>
                       </div>
@@ -4047,7 +4047,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                             }
                             required
                             autoComplete="name"
-                            className="pl-9 rounded-lg border-input"
+                            className="auth-input pl-9 rounded-lg"
                           />
                         </div>
                       </div>
@@ -4075,7 +4075,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                             }
                             required
                             autoComplete="email"
-                            className="pl-9 rounded-lg border-input"
+                            className="auth-input pl-9 rounded-lg"
                           />
                         </div>
                       </div>
@@ -4103,7 +4103,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                             }
                             required
                             autoComplete="tel"
-                            className="pl-9 rounded-lg border-input"
+                            className="auth-input pl-9 rounded-lg"
                           />
                         </div>
                       </div>
@@ -4520,7 +4520,7 @@ function CustomerProfilePage({
                           setEditForm((p) => ({ ...p, name: e.target.value }))
                         }
                         required
-                        className="pl-9 rounded-lg border-input"
+                        className="auth-input pl-9 rounded-lg"
                       />
                     </div>
                   </div>
@@ -4542,7 +4542,7 @@ function CustomerProfilePage({
                           setEditForm((p) => ({ ...p, email: e.target.value }))
                         }
                         required
-                        className="pl-9 rounded-lg border-input"
+                        className="auth-input pl-9 rounded-lg"
                       />
                     </div>
                   </div>
@@ -4565,7 +4565,7 @@ function CustomerProfilePage({
                         onChange={(e) =>
                           setEditForm((p) => ({ ...p, mobile: e.target.value }))
                         }
-                        className="pl-9 rounded-lg border-input"
+                        className="auth-input pl-9 rounded-lg"
                       />
                     </div>
                   </div>

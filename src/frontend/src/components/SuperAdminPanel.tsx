@@ -2031,12 +2031,12 @@ function AdminOtpGate({ actor, onOtpVerified }: AdminOtpGateProps) {
                       onChange={setOtpValue}
                     >
                       <InputOTPGroup>
-                        <InputOTPSlot index={0} />
-                        <InputOTPSlot index={1} />
-                        <InputOTPSlot index={2} />
-                        <InputOTPSlot index={3} />
-                        <InputOTPSlot index={4} />
-                        <InputOTPSlot index={5} />
+                        <InputOTPSlot index={0} className="auth-otp-slot" />
+                        <InputOTPSlot index={1} className="auth-otp-slot" />
+                        <InputOTPSlot index={2} className="auth-otp-slot" />
+                        <InputOTPSlot index={3} className="auth-otp-slot" />
+                        <InputOTPSlot index={4} className="auth-otp-slot" />
+                        <InputOTPSlot index={5} className="auth-otp-slot" />
                       </InputOTPGroup>
                     </InputOTP>
                   </div>
@@ -2124,7 +2124,7 @@ function SecurityTabPasswordInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required
-        className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-9 pr-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        className="auth-input flex h-10 w-full rounded-lg px-3 pl-9 pr-10 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
       />
       <button
         type="button"

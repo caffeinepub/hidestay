@@ -13,6 +13,11 @@ interface ResetToken {
   expiresAt: number; // ms timestamp
 }
 
+interface ForgotUidRateLimit {
+  attempts: number;
+  windowStart: number; // ms timestamp when the 1-hour window opened
+}
+
 async function sha256Hex(input: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(input);
@@ -29,6 +34,7 @@ function generateCode(): string {
 export function useAdminCredentials(principalId: string) {
   const credsKey = `hidestay_admin_creds_${principalId}`;
   const resetKey = `hidestay_admin_reset_${principalId}`;
+  const forgotUidRlKey = `hidestay_admin_forgotuid_rl_${principalId}`;
 
   function getStored(): StoredCredentials | null {
     try {
@@ -108,9 +114,17 @@ export function useAdminCredentials(principalId: string) {
     error?: string;
   } {
     const stored = getStored();
-    if (!stored) return { success: false, error: "No credentials configured" };
+    // Always return a generic success message regardless of whether the email
+    // exists — this prevents email enumeration by external parties.
+    // Only generate and store a real token if the email actually matches.
+    const GENERIC_SUCCESS = "If email exists, details have been sent";
+    if (!stored) {
+      // No credentials configured on this device — still return generic message
+      return { success: true, code: undefined, error: GENERIC_SUCCESS };
+    }
     if (stored.email.toLowerCase() !== email.trim().toLowerCase()) {
-      return { success: false, error: "Email not found in admin credentials" };
+      // Email does not match — do not reveal this; return generic message
+      return { success: true, code: undefined, error: GENERIC_SUCCESS };
     }
     const code = generateCode();
     const token: ResetToken = {
@@ -161,6 +175,72 @@ export function useAdminCredentials(principalId: string) {
     }
   }
 
+  // ── Forgot User ID (rate-limited: max 3 attempts per hour) ──────────────
+  function forgotUserId(email: string): {
+    success: boolean;
+    userId?: string;
+    error?: string;
+    attemptsLeft?: number;
+  } {
+    // Check rate limit
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const MAX_ATTEMPTS = 3;
+    let rl: ForgotUidRateLimit = { attempts: 0, windowStart: Date.now() };
+    try {
+      const raw = localStorage.getItem(forgotUidRlKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ForgotUidRateLimit;
+        // Reset window if it has been more than 1 hour
+        if (Date.now() - parsed.windowStart >= ONE_HOUR_MS) {
+          rl = { attempts: 0, windowStart: Date.now() };
+        } else {
+          rl = parsed;
+        }
+      }
+    } catch {
+      rl = { attempts: 0, windowStart: Date.now() };
+    }
+
+    if (rl.attempts >= MAX_ATTEMPTS) {
+      const minutesLeft = Math.ceil(
+        (ONE_HOUR_MS - (Date.now() - rl.windowStart)) / 60000,
+      );
+      return {
+        success: false,
+        error: `Too many attempts. Please try again in ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
+        attemptsLeft: 0,
+      };
+    }
+
+    // Increment attempt count before checking email (prevents enumeration
+    // timing attacks — attmpt is counted regardless of outcome)
+    rl.attempts += 1;
+    localStorage.setItem(forgotUidRlKey, JSON.stringify(rl));
+
+    const stored = getStored();
+
+    // Always return the same generic message whether the email exists or not.
+    // This prevents email enumeration: an attacker cannot tell if a given
+    // address belongs to a super_admin account.
+    const GENERIC_MSG = "If email exists, details have been sent";
+
+    if (!stored) {
+      return { success: true, userId: undefined, error: GENERIC_MSG };
+    }
+
+    if (stored.email.toLowerCase() !== email.trim().toLowerCase()) {
+      return { success: true, userId: undefined, error: GENERIC_MSG };
+    }
+
+    // Email matched — reset rate limit on success
+    localStorage.setItem(
+      forgotUidRlKey,
+      JSON.stringify({ attempts: 0, windowStart: Date.now() }),
+    );
+
+    return { success: true, userId: stored.userId, attemptsLeft: MAX_ATTEMPTS };
+  }
+
   return {
     hasCredentials,
     userId: storedUserId,
@@ -170,5 +250,6 @@ export function useAdminCredentials(principalId: string) {
     changePassword,
     generateResetToken,
     resetPassword,
+    forgotUserId,
   };
 }
