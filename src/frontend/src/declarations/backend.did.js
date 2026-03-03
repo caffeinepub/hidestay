@@ -64,6 +64,7 @@ export const CustomerProfile = IDL.Record({
   'email' : IDL.Text,
   'memberSince' : IDL.Int,
   'passwordHash' : IDL.Text,
+  'mobile' : IDL.Text,
 });
 export const PropertyListingStatus = IDL.Variant({
   'Approved' : IDL.Null,
@@ -155,7 +156,7 @@ export const idlService = IDL.Service({
       [],
     ),
   'registerCustomer' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
       [],
     ),
@@ -186,7 +187,7 @@ export const idlService = IDL.Service({
   'unblockDate' : IDL.Func([IDL.Nat], [], []),
   'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
   'updateCustomerProfile' : IDL.Func(
-      [IDL.Text, IDL.Text],
+      [IDL.Text, IDL.Text, IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
       [],
     ),
@@ -252,6 +253,7 @@ export const idlFactory = ({ IDL }) => {
     'email' : IDL.Text,
     'memberSince' : IDL.Int,
     'passwordHash' : IDL.Text,
+    'mobile' : IDL.Text,
   });
   const PropertyListingStatus = IDL.Variant({
     'Approved' : IDL.Null,
@@ -351,7 +353,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'registerCustomer' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
         [],
       ),
@@ -382,7 +384,7 @@ export const idlFactory = ({ IDL }) => {
     'unblockDate' : IDL.Func([IDL.Nat], [], []),
     'updateBookingStatus' : IDL.Func([IDL.Nat, Status], [], []),
     'updateCustomerProfile' : IDL.Func(
-        [IDL.Text, IDL.Text],
+        [IDL.Text, IDL.Text, IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Text, 'error' : IDL.Text })],
         [],
       ),

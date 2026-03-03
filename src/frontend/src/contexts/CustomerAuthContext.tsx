@@ -21,6 +21,7 @@ interface CustomerAuthState {
   register: (
     name: string,
     email: string,
+    mobile: string,
     password: string,
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -32,7 +33,7 @@ const CustomerAuthContext = createContext<CustomerAuthState>({
   profile: null,
   isLoadingProfile: false,
   login: async () => ({ success: false }),
-  register: async () => ({ success: false }),
+  register: async (_name, _email, _mobile, _password) => ({ success: false }),
   logout: () => {},
   refetchProfile: () => {},
 });
@@ -98,6 +99,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     async (
       name: string,
       email: string,
+      mobile: string,
       password: string,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!actor) return { success: false, error: "Not connected" };
@@ -109,7 +111,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const result = await actor.registerCustomer(name, email, password);
+        const result = await actor.registerCustomer(
+          name,
+          email,
+          mobile,
+          password,
+        );
         if (result.__kind__ === "ok") {
           setIsEmailAuthed(true);
           await queryClient.invalidateQueries({

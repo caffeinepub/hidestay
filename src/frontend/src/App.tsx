@@ -3167,6 +3167,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
   const [signupForm, setSignupForm] = useState({
     name: "",
     email: "",
+    mobile: "",
     password: "",
     confirmPassword: "",
   });
@@ -3182,7 +3183,13 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
     setLoginError("");
     setSignupError("");
     setLoginForm({ email: "", password: "" });
-    setSignupForm({ name: "", email: "", password: "", confirmPassword: "" });
+    setSignupForm({
+      name: "",
+      email: "",
+      mobile: "",
+      password: "",
+      confirmPassword: "",
+    });
     setSignupSuccess(false);
   };
 
@@ -3256,8 +3263,19 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
     e.preventDefault();
     setSignupError("");
 
-    if (!signupForm.name || !signupForm.email || !signupForm.password) {
+    if (
+      !signupForm.name ||
+      !signupForm.email ||
+      !signupForm.mobile ||
+      !signupForm.password
+    ) {
       setSignupError("Please fill in all fields.");
+      return;
+    }
+    // Validate mobile: must be exactly 10 digits
+    const mobileDigits = signupForm.mobile.replace(/\D/g, "");
+    if (mobileDigits.length !== 10) {
+      setSignupError("Mobile number must be 10 digits.");
       return;
     }
     if (signupForm.password.length < 8) {
@@ -3280,11 +3298,19 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
     const result = await register(
       signupForm.name,
       signupForm.email,
+      signupForm.mobile,
       signupForm.password,
     );
     setIsSubmitting(false);
     if (result.success) {
       setSignupSuccess(true);
+      setSignupForm({
+        name: "",
+        email: "",
+        mobile: "",
+        password: "",
+        confirmPassword: "",
+      });
       toast.success("Account created successfully!");
     } else {
       setSignupError(result.error ?? "Registration failed. Please try again.");
@@ -3577,6 +3603,34 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
 
                       <div className="space-y-1.5">
                         <Label
+                          htmlFor="signup-mobile"
+                          className="text-sm font-semibold"
+                        >
+                          Mobile Number
+                        </Label>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="signup-mobile"
+                            data-ocid="auth.signup_mobile_input"
+                            type="tel"
+                            placeholder="+91 98765 43210"
+                            value={signupForm.mobile}
+                            onChange={(e) =>
+                              setSignupForm((p) => ({
+                                ...p,
+                                mobile: e.target.value,
+                              }))
+                            }
+                            required
+                            autoComplete="tel"
+                            className="pl-9 rounded-lg border-input"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label
                           htmlFor="signup-password"
                           className="text-sm font-semibold"
                         >
@@ -3715,7 +3769,11 @@ function CustomerProfilePage({
   const { profile, logout, refetchProfile } = useCustomerAuth();
   const queryClient = useQueryClient();
 
-  const [editForm, setEditForm] = useState({ name: "", email: "" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    mobile: "",
+  });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [pwForm, setPwForm] = useState({
     oldPassword: "",
@@ -3729,7 +3787,11 @@ function CustomerProfilePage({
   // Sync edit form when profile loads
   useEffect(() => {
     if (profile) {
-      setEditForm({ name: profile.name, email: profile.email });
+      setEditForm({
+        name: profile.name,
+        email: profile.email,
+        mobile: profile.mobile ?? "",
+      });
     }
   }, [profile]);
 
@@ -3757,6 +3819,7 @@ function CustomerProfilePage({
       const result = await actor.updateCustomerProfile(
         editForm.name,
         editForm.email,
+        editForm.mobile,
       );
       if (result.__kind__ === "error") throw new Error(result.error);
     },
@@ -4005,6 +4068,29 @@ function CustomerProfilePage({
                     </div>
                   </div>
 
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="profile-mobile"
+                      className="text-sm font-semibold"
+                    >
+                      Mobile Number
+                    </Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="profile-mobile"
+                        data-ocid="profile.mobile_input"
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        value={editForm.mobile}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, mobile: e.target.value }))
+                        }
+                        className="pl-9 rounded-lg border-input"
+                      />
+                    </div>
+                  </div>
+
                   {editError && (
                     <div
                       data-ocid="profile.edit_error_state"
@@ -4042,6 +4128,7 @@ function CustomerProfilePage({
                           setEditForm({
                             name: profile.name,
                             email: profile.email,
+                            mobile: profile.mobile ?? "",
                           });
                       }}
                       className="border-border font-semibold rounded-xl"
@@ -4075,6 +4162,25 @@ function CustomerProfilePage({
                       </p>
                       <p className="font-semibold text-foreground text-sm">
                         {profile?.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                        Mobile Number
+                      </p>
+                      <p className="font-semibold text-foreground text-sm">
+                        {profile?.mobile ? (
+                          profile.mobile
+                        ) : (
+                          <span className="text-muted-foreground font-normal italic">
+                            Not set
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -4975,6 +5081,17 @@ function AppInner() {
       setProfilePageOpen(false);
     }
   }, [isAuthenticated]);
+
+  // ── Admin route guard: redirect unauthorized users away from /admin ────────
+  useEffect(() => {
+    if (actorLoading || !actor) return;
+    if (superAdminOpen && isAdmin === false) {
+      closeAdminPanel();
+      toast.error(
+        "Access restricted. Only administrators can access this panel.",
+      );
+    }
+  }, [isAdmin, actorLoading, actor, superAdminOpen, closeAdminPanel]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col font-body">

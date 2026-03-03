@@ -118,6 +118,7 @@ export interface CustomerProfile {
     email: string;
     memberSince: bigint;
     passwordHash: string;
+    mobile: string;
 }
 export interface PropertyListing {
     id: bigint;
@@ -221,7 +222,7 @@ export interface backendInterface {
         __kind__: "error";
         error: string;
     }>;
-    registerCustomer(name: string, email: string, password: string): Promise<{
+    registerCustomer(name: string, email: string, mobile: string, password: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
@@ -237,7 +238,7 @@ export interface backendInterface {
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
-    updateCustomerProfile(name: string, email: string): Promise<{
+    updateCustomerProfile(name: string, email: string, mobile: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
@@ -653,7 +654,7 @@ export class Backend implements backendInterface {
             return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
         }
     }
-    async registerCustomer(arg0: string, arg1: string, arg2: string): Promise<{
+    async registerCustomer(arg0: string, arg1: string, arg2: string, arg3: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
@@ -662,14 +663,14 @@ export class Backend implements backendInterface {
     }> {
         if (this.processError) {
             try {
-                const result = await this.actor.registerCustomer(arg0, arg1, arg2);
+                const result = await this.actor.registerCustomer(arg0, arg1, arg2, arg3);
                 return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.registerCustomer(arg0, arg1, arg2);
+            const result = await this.actor.registerCustomer(arg0, arg1, arg2, arg3);
             return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
         }
     }
@@ -799,7 +800,7 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async updateCustomerProfile(arg0: string, arg1: string): Promise<{
+    async updateCustomerProfile(arg0: string, arg1: string, arg2: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
@@ -808,14 +809,14 @@ export class Backend implements backendInterface {
     }> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateCustomerProfile(arg0, arg1);
+                const result = await this.actor.updateCustomerProfile(arg0, arg1, arg2);
                 return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateCustomerProfile(arg0, arg1);
+            const result = await this.actor.updateCustomerProfile(arg0, arg1, arg2);
             return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
         }
     }

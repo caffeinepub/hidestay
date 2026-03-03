@@ -1,21 +1,9 @@
 import Map "mo:core/Map";
+import Nat "mo:core/Nat";
 import Principal "mo:core/Principal";
 
 module {
-  type UserProfile = {
-    name : Text;
-    email : Text;
-    phone : Text;
-  };
-
-  type BlockedDate = {
-    id : Nat;
-    hotelId : Nat;
-    date : Text;
-    reason : Text;
-  };
-
-  type CustomerProfile = {
+  type OldCustomerProfile = {
     name : Text;
     email : Text;
     passwordHash : Text;
@@ -23,22 +11,37 @@ module {
   };
 
   type OldActor = {
-    userProfiles : Map.Map<Principal, UserProfile>;
-    blockedDates : Map.Map<Nat, BlockedDate>;
-  };
-
-  type NewActor = {
-    userProfiles : Map.Map<Principal, UserProfile>;
-    blockedDates : Map.Map<Nat, BlockedDate>;
-    customerProfiles : Map.Map<Principal, CustomerProfile>;
+    customerProfiles : Map.Map<Principal, OldCustomerProfile>;
     emailToPrincipal : Map.Map<Text, Principal>;
   };
 
+  type NewCustomerProfile = {
+    name : Text;
+    email : Text;
+    mobile : Text;
+    passwordHash : Text;
+    memberSince : Int;
+  };
+
+  type NewActor = {
+    customerProfiles : Map.Map<Principal, NewCustomerProfile>;
+    emailToPrincipal : Map.Map<Text, Principal>;
+    mobileToPrincipal : Map.Map<Text, Principal>;
+  };
+
   public func run(old : OldActor) : NewActor {
+    let newCustomerProfiles = old.customerProfiles.map<Principal, OldCustomerProfile, NewCustomerProfile>(
+      func(_principal, oldProfile) {
+        { oldProfile with mobile = "" };
+      }
+    );
+
+    let mobileToPrincipal = Map.empty<Text, Principal>();
+
     {
-      old with
-      customerProfiles = Map.empty<Principal, CustomerProfile>();
-      emailToPrincipal = Map.empty<Text, Principal>();
+      customerProfiles = newCustomerProfiles;
+      emailToPrincipal = old.emailToPrincipal;
+      mobileToPrincipal;
     };
   };
 };

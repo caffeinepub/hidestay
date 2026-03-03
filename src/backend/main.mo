@@ -5,9 +5,9 @@ import Array "mo:core/Array";
 import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
+import Migration "migration";
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
-import Migration "migration";
 
 (with migration = Migration.run)
 actor {
@@ -46,14 +46,16 @@ actor {
   public type CustomerProfile = {
     name : Text;
     email : Text;
+    mobile : Text;
     passwordHash : Text;
     memberSince : Int;
   };
 
   let customerProfiles = Map.empty<Principal, CustomerProfile>();
   let emailToPrincipal = Map.empty<Text, Principal>();
+  let mobileToPrincipal = Map.empty<Text, Principal>();
 
-  public shared ({ caller }) func registerCustomer(name : Text, email : Text, password : Text) : async {
+  public shared ({ caller }) func registerCustomer(name : Text, email : Text, mobile : Text, password : Text) : async {
     #ok : Text;
     #error : Text;
   } {
@@ -65,15 +67,24 @@ actor {
       return #error("Email already registered");
     };
 
+    if (mobile != "" and mobileToPrincipal.containsKey(mobile)) {
+      return #error("Mobile number already registered");
+    };
+
     let profile : CustomerProfile = {
       name;
       email;
+      mobile;
       passwordHash = password;
       memberSince = 2024_01_01_0000;
     };
 
     customerProfiles.add(caller, profile);
     emailToPrincipal.add(email, caller);
+
+    if (mobile != "") {
+      mobileToPrincipal.add(mobile, caller);
+    };
 
     #ok("Registration successful");
   };
@@ -110,7 +121,7 @@ actor {
     customerProfiles.get(caller);
   };
 
-  public shared ({ caller }) func updateCustomerProfile(name : Text, email : Text) : async {
+  public shared ({ caller }) func updateCustomerProfile(name : Text, email : Text, mobile : Text) : async {
     #ok : Text;
     #error : Text;
   } {
@@ -125,9 +136,21 @@ actor {
           return #error("Email already in use");
         };
 
+        if (mobile != "" and (mobile != profile.mobile)) {
+          switch (mobileToPrincipal.get(mobile)) {
+            case (?existingPrincipal) {
+              if (existingPrincipal != caller) {
+                return #error("Mobile number already in use by another profile");
+              };
+            };
+            case (null) {};
+          };
+        };
+
         let updated : CustomerProfile = {
           name;
           email;
+          mobile;
           passwordHash = profile.passwordHash;
           memberSince = profile.memberSince;
         };
@@ -139,6 +162,16 @@ actor {
         };
 
         emailToPrincipal.add(email, caller);
+
+        let currentMobile = profile.mobile;
+        if (mobile != currentMobile) {
+          if (currentMobile != "" and mobileToPrincipal.get(currentMobile) == ?caller) {
+            mobileToPrincipal.remove(currentMobile);
+          };
+          if (mobile != "" and (mobileToPrincipal.get(mobile) == null or mobileToPrincipal.get(mobile) == ?caller)) {
+            mobileToPrincipal.add(mobile, caller);
+          };
+        };
 
         #ok("Profile updated successfully");
       };
@@ -162,6 +195,7 @@ actor {
           let updated : CustomerProfile = {
             name = profile.name;
             email = profile.email;
+            mobile = profile.mobile;
             passwordHash = newPassword;
             memberSince = profile.memberSince;
           };

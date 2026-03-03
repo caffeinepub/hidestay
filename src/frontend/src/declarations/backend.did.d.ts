@@ -34,6 +34,7 @@ export interface CustomerProfile {
   'email' : string,
   'memberSince' : bigint,
   'passwordHash' : string,
+  'mobile' : string,
 }
 export interface Hotel {
   'id' : bigint,
@@ -134,7 +135,7 @@ export interface _SERVICE {
       { 'error' : string }
   >,
   'registerCustomer' : ActorMethod<
-    [string, string, string],
+    [string, string, string, string],
     { 'ok' : string } |
       { 'error' : string }
   >,
@@ -164,7 +165,7 @@ export interface _SERVICE {
   'unblockDate' : ActorMethod<[bigint], undefined>,
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
   'updateCustomerProfile' : ActorMethod<
-    [string, string],
+    [string, string, string],
     { 'ok' : string } |
       { 'error' : string }
   >,

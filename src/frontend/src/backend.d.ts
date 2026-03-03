@@ -36,6 +36,7 @@ export interface CustomerProfile {
     email: string;
     memberSince: bigint;
     passwordHash: string;
+    mobile: string;
 }
 export interface PropertyListing {
     id: bigint;
@@ -138,7 +139,7 @@ export interface backendInterface {
         __kind__: "error";
         error: string;
     }>;
-    registerCustomer(name: string, email: string, password: string): Promise<{
+    registerCustomer(name: string, email: string, mobile: string, password: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
@@ -154,7 +155,7 @@ export interface backendInterface {
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
-    updateCustomerProfile(name: string, email: string): Promise<{
+    updateCustomerProfile(name: string, email: string, mobile: string): Promise<{
         __kind__: "ok";
         ok: string;
     } | {
