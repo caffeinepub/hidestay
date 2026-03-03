@@ -56,7 +56,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type {
   Booking,
@@ -74,6 +74,9 @@ import {
 // Types & Props
 // ─────────────────────────────────────────────────────────────────────────────
 
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_WARN_MS = 5 * 60 * 1000; // warn at 5 minutes remaining
+
 interface SuperAdminPanelProps {
   open: boolean;
   onClose: () => void;
@@ -81,6 +84,7 @@ interface SuperAdminPanelProps {
   isAdmin: boolean;
   isOtpVerified: boolean;
   onOtpVerified: () => void;
+  onSessionTimeout: () => void;
 }
 
 type AdminTab = "dashboard" | "hotels" | "bookings" | "users" | "subscriptions";
@@ -1956,6 +1960,7 @@ export function SuperAdminPanel({
   isAdmin,
   isOtpVerified,
   onOtpVerified,
+  onSessionTimeout,
 }: SuperAdminPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
@@ -1963,6 +1968,80 @@ export function SuperAdminPanel({
   // Track pending IDs for optimistic loading states
   const [pendingHotelId, setPendingHotelId] = useState<bigint | null>(null);
   const [pendingListingId, setPendingListingId] = useState<bigint | null>(null);
+
+  // ── Session timeout (30 min inactivity) ───────────────────────────────────
+  const lastActivityRef = useRef<number>(Date.now());
+  const warnedRef = useRef<boolean>(false);
+  const sessionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+
+  // Reset activity timestamp on any user interaction inside the panel
+  const resetActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    warnedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isOtpVerified) {
+      // Clear interval when panel is closed or OTP not verified
+      if (sessionIntervalRef.current) {
+        clearInterval(sessionIntervalRef.current);
+        sessionIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Start fresh activity tracking when session begins
+    lastActivityRef.current = Date.now();
+    warnedRef.current = false;
+
+    // Listen for user activity
+    const onActivity = () => resetActivity();
+    window.addEventListener("mousemove", onActivity);
+    window.addEventListener("keydown", onActivity);
+    window.addEventListener("click", onActivity);
+    window.addEventListener("scroll", onActivity, true);
+
+    // Check every 60 seconds
+    sessionIntervalRef.current = setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      const remaining = SESSION_TIMEOUT_MS - idle;
+
+      if (remaining <= 0) {
+        // Session expired
+        clearInterval(sessionIntervalRef.current!);
+        sessionIntervalRef.current = null;
+        toast.error(
+          "Admin session expired due to 30 minutes of inactivity. Please verify OTP again.",
+          {
+            duration: 6000,
+          },
+        );
+        onSessionTimeout();
+      } else if (remaining <= SESSION_WARN_MS && !warnedRef.current) {
+        // 5-minute warning
+        warnedRef.current = true;
+        toast.warning(
+          "Your admin session will expire in 5 minutes due to inactivity.",
+          {
+            duration: 8000,
+          },
+        );
+      }
+    }, 60_000);
+
+    return () => {
+      window.removeEventListener("mousemove", onActivity);
+      window.removeEventListener("keydown", onActivity);
+      window.removeEventListener("click", onActivity);
+      window.removeEventListener("scroll", onActivity, true);
+      if (sessionIntervalRef.current) {
+        clearInterval(sessionIntervalRef.current);
+        sessionIntervalRef.current = null;
+      }
+    };
+  }, [open, isOtpVerified, onSessionTimeout, resetActivity]);
 
   // ── Data Queries ──────────────────────────────────────────────────────────
 

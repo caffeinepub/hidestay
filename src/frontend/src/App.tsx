@@ -5348,6 +5348,7 @@ function AppInner() {
         isAdmin={isAdmin}
         isOtpVerified={adminOtpVerified}
         onOtpVerified={() => setAdminOtpVerified(true)}
+        onSessionTimeout={() => setAdminOtpVerified(false)}
       />
 
       {/* My Bookings Panel */}
