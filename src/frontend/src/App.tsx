@@ -87,6 +87,7 @@ import {
   PropertyListingStatus,
   Status,
 } from "./backend.d";
+import { AdminPasswordAuth } from "./components/AdminPasswordAuth";
 import { OwnerDashboard, useIsOwner } from "./components/OwnerDashboard";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { loadConfig } from "./config";
@@ -5426,6 +5427,7 @@ function AppInner() {
     () => window.location.pathname === "/admin",
   );
   const [adminOtpVerified, setAdminOtpVerified] = useState(false);
+  const [adminPasswordVerified, setAdminPasswordVerified] = useState(false);
   const [myBookingsPanelOpen, setMyBookingsPanelOpen] = useState(false);
   const [ownerDashboardOpen, setOwnerDashboardOpen] = useState(false);
 
@@ -5447,6 +5449,7 @@ function AppInner() {
     history.pushState({}, "", "/");
     setSuperAdminOpen(false);
     setAdminOtpVerified(false);
+    setAdminPasswordVerified(false);
   }, []);
 
   // ── Auth
@@ -5822,15 +5825,24 @@ function AppInner() {
         actor={actor}
       />
 
+      {/* Super Admin Password Auth Gate */}
+      {superAdminOpen && isAdmin && !adminPasswordVerified && (
+        <AdminPasswordAuth
+          principalId={identity?.getPrincipal().toString() ?? ""}
+          onSuccess={() => setAdminPasswordVerified(true)}
+        />
+      )}
+
       {/* Super Admin Panel — accessible at /admin */}
       <SuperAdminPanel
-        open={superAdminOpen}
+        open={superAdminOpen && adminPasswordVerified}
         onClose={closeAdminPanel}
         actor={actor}
         isAdmin={isAdmin}
         isOtpVerified={adminOtpVerified}
         onOtpVerified={() => setAdminOtpVerified(true)}
         onSessionTimeout={() => setAdminOtpVerified(false)}
+        adminPrincipalId={identity?.getPrincipal().toString() ?? ""}
       />
 
       {/* My Bookings Panel */}

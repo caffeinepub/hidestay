@@ -1,48 +1,42 @@
-# HIDESTAY — KYC Document Upload for List Your Property
+# HIDESTAY
 
 ## Current State
 
-- "List Your Property" form (`ListPropertyModal` in `App.tsx`) allows hotel image upload (up to 5 JPG/PNG, 2MB each) via blob storage
-- `PropertyListing` type in `main.mo` has `imageUrls: [Text]` field
-- `submitPropertyListing` backend function accepts `imageUrls` parameter
-- Blob storage (`MixinStorage`) is already integrated for hotel image uploads
-- Super Admin Panel (`SuperAdminPanel.tsx`) shows property listings in the Subscriptions tab with approve/reject actions
+- Super Admin uses Internet Identity (II) login + 6-digit OTP gate before dashboard access.
+- No username/password-based login for the Super Admin panel — the admin is identified purely by their II principal.
+- OTP gate (lock after 5 attempts, 30-min session timeout) exists inside SuperAdminPanel.tsx.
+- Customer profiles use email + password stored as plaintext `passwordHash` field.
+- No "Forgot Password" flow exists anywhere.
+- No "Change Password" option exists inside the Super Admin dashboard.
+- No password strength validation in the admin UI.
 
 ## Requested Changes (Diff)
 
 ### Add
-- KYC document upload field in "List Your Property" form, positioned after the Hotel Images section
-- KYC upload accepts only JPG and PNG files, max 2MB, single file
-- Preview of KYC document before submission (thumbnail)
-- KYC document URL stored as a separate field in `PropertyListing` backend type
-- `kycDocumentUrl: Text` field added to `PropertyListing` type in Motoko
-- `submitPropertyListing` Motoko function updated to accept `kycDocumentUrl: Text` parameter
-- KYC file uploaded to blob storage with a distinct path prefix (e.g., `kyc/`) to distinguish from hotel images
-- A new admin-only query `getKycDocumentUrl(listingId: Nat)` that returns the KYC URL only to super_admin callers — KYC files never exposed to public or non-admin users
-- In the Super Admin Panel Subscriptions tab: display a "View KYC" button per listing that fetches and shows the KYC document image in a secure preview dialog (admin-only, server-gated)
+
+- **Admin User ID + Password login**: A dedicated Admin Login screen (separate from customer login) where the Super Admin enters a User ID (stored in backend) and a password. This replaces the need for a second credential layer beyond II — practically, the admin now has an explicit credential pair stored on-chain (User ID is a fixed text label, password is hashed).
+- **Backend: Admin credential storage**: `adminCredentials` map keyed by Principal storing `{ userId: Text; passwordHash: Text }`. New functions: `setAdminPassword(userId, password)` (first-time setup or admin-only), `loginWithAdminPassword(userId, password)` → `#ok | #error`. Password stored as a simple SHA-256-like hash using a deterministic text transformation (no external crypto lib — use iterative hashing pattern already used in project).
+- **Change Password in Admin Dashboard**: A "Change Password" tab/section inside the admin panel. Requires current password, new password with strength validation, and confirm new password. Calls new `changeAdminPassword(oldPassword, newPassword)` backend function.
+- **Password strength validation**: Frontend utility — validates minimum 8 chars, at least 1 uppercase, 1 lowercase, 1 digit, 1 special char. Displayed as a strength bar with labels (Weak / Fair / Strong / Very Strong).
+- **Forgot Password flow**: Admin-facing "Forgot Password" link on the admin login screen. Collects registered admin email. Backend generates a reset token (6-digit code with 10-minute expiry) stored in `passwordResetTokens` map. Token displayed on screen in demo mode (no email sending since email is disabled). After entering the token, allow setting a new password via `resetAdminPassword(token, newPassword)` backend function.
+- **Backend: `generatePasswordResetToken(email)`**: Admin-accessible, generates a 10-min token for the given email if it matches an admin credential. Returns token in demo mode.
+- **Backend: `resetAdminPassword(token, newPassword)`**: Validates token expiry, updates password hash, clears token.
 
 ### Modify
-- `PropertyListing` type: add `kycDocumentUrl: Text` field (empty string if not uploaded)
-- `submitPropertyListing`: add `kycDocumentUrl` parameter
-- `approvePropertyListing` and `rejectPropertyListing` functions: propagate `kycDocumentUrl` in the updated listing record
-- `ListPropertyModal` (App.tsx): add KYC upload section below Hotel Images section
-  - Single file input (not multiple), JPG/PNG only, 2MB limit
-  - Preview thumbnail before submission
-  - Upload to blob storage on submit (same StorageClient pattern used for hotel images)
-  - Pass `kycDocumentUrl` to `submitPropertyListing`
-- Super Admin Panel Subscriptions tab: add "View KYC" button that calls `getKycDocumentUrl` and shows the image in a modal dialog
+
+- **Admin login flow in frontend**: After II login confirms admin role, show the Admin Password Login screen (User ID + Password) before the OTP gate. The sequence becomes: II login → Admin ID+Password screen → OTP gate → Dashboard.
+- **SuperAdminPanel.tsx**: Add a "Security" or "Change Password" section inside the dashboard tabs. Existing tabs (Dashboard, Hotels, Bookings, Users, Subscriptions) remain intact.
+- **Backend password hashing**: Use a deterministic multi-pass text hash (consistent with existing Motoko patterns) instead of storing plaintext. The `setAdminPassword` and `changeAdminPassword` functions hash before storage.
 
 ### Remove
-- Nothing removed
+
+- Nothing removed.
 
 ## Implementation Plan
 
-1. Update `PropertyListing` Motoko type to include `kycDocumentUrl: Text`
-2. Update `submitPropertyListing` to accept and store `kycDocumentUrl`
-3. Update `approvePropertyListing` and `rejectPropertyListing` to propagate `kycDocumentUrl`
-4. Add `getKycDocumentUrl(listingId: Nat)` admin-only query returning `Text`
-5. Regenerate backend to update `backend.d.ts` bindings
-6. In `ListPropertyModal` (App.tsx): add KYC upload state, file input, preview, and upload logic mirroring hotel image pattern (single file, distinct variable)
-7. Pass `kycDocumentUrl` string to `submitPropertyListing` call
-8. In `SuperAdminPanel.tsx` Subscriptions tab: add "View KYC" button per listing, call `getKycDocumentUrl`, show image in a dialog
-9. Validate and build cleanly
+1. **Backend**: Add `AdminCredential` type, `adminCredentials` map, `adminEmailIndex` map. Add functions: `setupAdminCredentials(userId, email, password)`, `loginWithAdminPassword(userId, password)`, `changeAdminPassword(oldPassword, newPassword)`, `generatePasswordResetToken(email)`, `resetAdminPassword(token, newPassword)`. Hash passwords using a simple iterative hash (XOR + shift pattern in Motoko). Keep all existing functions untouched.
+2. **Frontend — Admin Password Login screen**: A modal/screen that appears after II confirms admin role but before OTP gate. Fields: User ID, Password. "Forgot Password?" link opens the reset flow. On success, advances to OTP gate.
+3. **Frontend — Forgot Password flow**: Slide-in sub-view within the admin auth screens. Step 1: enter email → get demo token. Step 2: enter token + new password + confirm. On success, return to login screen.
+4. **Frontend — Change Password in admin dashboard**: New "Security" tab in the admin panel. Password strength bar, old password field, new password + confirm. Calls `changeAdminPassword`.
+5. **Frontend — Password strength utility**: Reusable `PasswordStrengthBar` component with 4-level visual indicator.
+6. Validate build, fix any type errors.

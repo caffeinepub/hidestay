@@ -39,9 +39,11 @@ import {
   CheckCircle2,
   Crown,
   Eye,
+  EyeOff,
   HelpCircle,
   Hotel,
   Info,
+  KeyRound,
   Layers,
   Loader2,
   Lock,
@@ -76,6 +78,11 @@ import {
   Status,
   UserRole,
 } from "../backend.d";
+import { useAdminCredentials } from "../hooks/useAdminCredentials";
+import {
+  PasswordStrengthBar,
+  getPasswordStrengthScore,
+} from "./PasswordStrengthBar";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Props
@@ -92,9 +99,16 @@ interface SuperAdminPanelProps {
   isOtpVerified: boolean;
   onOtpVerified: () => void;
   onSessionTimeout: () => void;
+  adminPrincipalId?: string;
 }
 
-type AdminTab = "dashboard" | "hotels" | "bookings" | "users" | "subscriptions";
+type AdminTab =
+  | "dashboard"
+  | "hotels"
+  | "bookings"
+  | "users"
+  | "subscriptions"
+  | "security";
 
 // Enriched booking type — joins Booking with Hotel data on the frontend
 interface EnrichedBooking extends Booking {
@@ -2082,6 +2096,270 @@ function AdminOtpGate({ actor, onOtpVerified }: AdminOtpGateProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Security Tab — Change Admin Password
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SecurityTabPasswordInput({
+  id,
+  placeholder,
+  value,
+  onChange,
+  ocid,
+}: {
+  id: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  ocid?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+      <input
+        id={id}
+        data-ocid={ocid}
+        type={show ? "text" : "password"}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        className="flex h-10 w-full rounded-lg border border-input bg-background px-3 pl-9 pr-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+interface SecurityTabProps {
+  principalId: string;
+}
+
+function SecurityTab({ principalId }: SecurityTabProps) {
+  const creds = useAdminCredentials(principalId);
+
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const strengthScore = getPasswordStrengthScore(newPw);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess(false);
+
+    if (!currentPw) {
+      setError("Current password is required");
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setError("New passwords do not match");
+      return;
+    }
+    if (strengthScore < 2) {
+      setError(
+        "New password is too weak. Add uppercase letters, numbers, or special characters.",
+      );
+      return;
+    }
+
+    setLoading(true);
+    const result = await creds.changePassword(currentPw, newPw);
+    setLoading(false);
+
+    if (result.success) {
+      setSuccess(true);
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      toast.success("Password changed successfully!");
+    } else {
+      setError(result.error ?? "Failed to change password");
+    }
+  };
+
+  if (!creds.hasCredentials) {
+    return (
+      <div
+        data-ocid="super_admin.security.panel"
+        className="max-w-md mx-auto py-8"
+      >
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-amber-800 text-sm mb-1">
+              No credentials configured
+            </p>
+            <p className="text-amber-700 text-xs leading-relaxed">
+              Admin password credentials haven't been set up on this device yet.
+              Please log out of the admin panel and complete the initial setup.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-ocid="super_admin.security.panel"
+      className="max-w-lg mx-auto py-2"
+    >
+      <div className="mb-6">
+        <div className="flex items-center gap-2.5 mb-1">
+          <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <KeyRound className="w-4 h-4 text-indigo-600" />
+          </div>
+          <h2 className="font-display font-bold text-lg text-foreground">
+            Change Admin Password
+          </h2>
+        </div>
+        <p className="text-sm text-muted-foreground ml-10">
+          Update your admin panel password. Current Admin ID:{" "}
+          <span className="font-semibold text-foreground">{creds.userId}</span>
+        </p>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Current Password */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="sec-current-pw"
+              className="text-sm font-semibold text-foreground"
+            >
+              Current Password
+            </label>
+            <SecurityTabPasswordInput
+              id="sec-current-pw"
+              placeholder="Enter current password"
+              value={currentPw}
+              onChange={setCurrentPw}
+              ocid="super_admin.security.current_password_input"
+            />
+          </div>
+
+          <Separator />
+
+          {/* New Password */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="sec-new-pw"
+              className="text-sm font-semibold text-foreground"
+            >
+              New Password
+            </label>
+            <SecurityTabPasswordInput
+              id="sec-new-pw"
+              placeholder="Enter new password"
+              value={newPw}
+              onChange={setNewPw}
+              ocid="super_admin.security.new_password_input"
+            />
+            <PasswordStrengthBar password={newPw} />
+          </div>
+
+          {/* Confirm New Password */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="sec-confirm-pw"
+              className="text-sm font-semibold text-foreground"
+            >
+              Confirm New Password
+            </label>
+            <SecurityTabPasswordInput
+              id="sec-confirm-pw"
+              placeholder="Re-enter new password"
+              value={confirmPw}
+              onChange={setConfirmPw}
+              ocid="super_admin.security.confirm_password_input"
+            />
+            {confirmPw && newPw !== confirmPw && (
+              <p className="text-xs text-red-500 mt-1">
+                Passwords do not match
+              </p>
+            )}
+          </div>
+
+          {/* Error */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                data-ocid="super_admin.security.error_state"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3"
+              >
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-700">{error}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Success */}
+          <AnimatePresence>
+            {success && (
+              <motion.div
+                data-ocid="super_admin.security.success_state"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <p className="text-sm text-emerald-700 font-semibold">
+                  Password changed successfully!
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <Button
+            data-ocid="super_admin.security.submit_button"
+            type="submit"
+            disabled={loading}
+            className="w-full gap-2 font-bold"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <KeyRound className="w-4 h-4" />
+                Update Password
+              </>
+            )}
+          </Button>
+        </form>
+      </div>
+
+      {/* Info */}
+      <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-700 leading-relaxed">
+          Your password is hashed with SHA-256 and stored locally on this
+          device. No passwords are stored in the backend database.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Access Denied Screen
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2129,6 +2407,7 @@ export function SuperAdminPanel({
   isOtpVerified,
   onOtpVerified,
   onSessionTimeout,
+  adminPrincipalId = "",
 }: SuperAdminPanelProps) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
@@ -2468,6 +2747,14 @@ export function SuperAdminPanel({
                       </span>
                     )}
                   </TabsTrigger>
+                  <TabsTrigger
+                    data-ocid="super_admin.security.tab"
+                    value="security"
+                    className="data-[state=active]:bg-brand data-[state=active]:text-white rounded-lg px-4 py-2 text-sm font-semibold gap-2 whitespace-nowrap"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    Security
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -2523,6 +2810,10 @@ export function SuperAdminPanel({
                         pendingListingId={pendingListingId}
                         actor={actor}
                       />
+                    </TabsContent>
+
+                    <TabsContent value="security" className="mt-0">
+                      <SecurityTab principalId={adminPrincipalId} />
                     </TabsContent>
                   </div>
                 </ScrollArea>
