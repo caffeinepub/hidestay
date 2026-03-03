@@ -8,6 +8,17 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
+export const _CaffeineStorageCreateCertificateResult = IDL.Record({
+  'method' : IDL.Text,
+  'blob_hash' : IDL.Text,
+});
+export const _CaffeineStorageRefillInformation = IDL.Record({
+  'proposed_top_up_amount' : IDL.Opt(IDL.Nat),
+});
+export const _CaffeineStorageRefillResult = IDL.Record({
+  'success' : IDL.Opt(IDL.Bool),
+  'topped_up_amount' : IDL.Opt(IDL.Nat),
+});
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
@@ -77,6 +88,7 @@ export const PropertyListing = IDL.Record({
   'status' : PropertyListingStatus,
   'hotelName' : IDL.Text,
   'ownerName' : IDL.Text,
+  'imageUrls' : IDL.Vec(IDL.Text),
   'city' : IDL.Text,
   'pricePerNight' : IDL.Int,
   'subscriptionPlan' : IDL.Text,
@@ -86,6 +98,7 @@ export const PropertyListing = IDL.Record({
   'description' : IDL.Text,
   'amenities' : IDL.Vec(IDL.Text),
   'address' : IDL.Text,
+  'kycDocumentUrl' : IDL.Text,
   'roomType' : IDL.Text,
 });
 export const RoomInventory = IDL.Record({
@@ -102,6 +115,32 @@ export const HotelQueryParams = IDL.Record({
 });
 
 export const idlService = IDL.Service({
+  '_caffeineStorageBlobIsLive' : IDL.Func(
+      [IDL.Vec(IDL.Nat8)],
+      [IDL.Bool],
+      ['query'],
+    ),
+  '_caffeineStorageBlobsToDelete' : IDL.Func(
+      [],
+      [IDL.Vec(IDL.Vec(IDL.Nat8))],
+      ['query'],
+    ),
+  '_caffeineStorageConfirmBlobDeletion' : IDL.Func(
+      [IDL.Vec(IDL.Vec(IDL.Nat8))],
+      [],
+      [],
+    ),
+  '_caffeineStorageCreateCertificate' : IDL.Func(
+      [IDL.Text],
+      [_CaffeineStorageCreateCertificateResult],
+      [],
+    ),
+  '_caffeineStorageRefillCashier' : IDL.Func(
+      [IDL.Opt(_CaffeineStorageRefillInformation)],
+      [_CaffeineStorageRefillResult],
+      [],
+    ),
+  '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'approveHotel' : IDL.Func([IDL.Nat], [], []),
   'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
@@ -142,6 +181,7 @@ export const idlService = IDL.Service({
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
   'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
+  'getKycDocumentUrl' : IDL.Func([IDL.Nat], [IDL.Text], ['query']),
   'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
   'getMyCustomerProfile' : IDL.Func([], [IDL.Opt(CustomerProfile)], ['query']),
   'getMyPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
@@ -185,6 +225,8 @@ export const idlService = IDL.Service({
         IDL.Text,
         IDL.Text,
         IDL.Int,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
       ],
       [IDL.Nat],
       [],
@@ -209,6 +251,17 @@ export const idlService = IDL.Service({
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
+  const _CaffeineStorageCreateCertificateResult = IDL.Record({
+    'method' : IDL.Text,
+    'blob_hash' : IDL.Text,
+  });
+  const _CaffeineStorageRefillInformation = IDL.Record({
+    'proposed_top_up_amount' : IDL.Opt(IDL.Nat),
+  });
+  const _CaffeineStorageRefillResult = IDL.Record({
+    'success' : IDL.Opt(IDL.Bool),
+    'topped_up_amount' : IDL.Opt(IDL.Nat),
+  });
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
@@ -278,6 +331,7 @@ export const idlFactory = ({ IDL }) => {
     'status' : PropertyListingStatus,
     'hotelName' : IDL.Text,
     'ownerName' : IDL.Text,
+    'imageUrls' : IDL.Vec(IDL.Text),
     'city' : IDL.Text,
     'pricePerNight' : IDL.Int,
     'subscriptionPlan' : IDL.Text,
@@ -287,6 +341,7 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'amenities' : IDL.Vec(IDL.Text),
     'address' : IDL.Text,
+    'kycDocumentUrl' : IDL.Text,
     'roomType' : IDL.Text,
   });
   const RoomInventory = IDL.Record({
@@ -303,6 +358,32 @@ export const idlFactory = ({ IDL }) => {
   });
   
   return IDL.Service({
+    '_caffeineStorageBlobIsLive' : IDL.Func(
+        [IDL.Vec(IDL.Nat8)],
+        [IDL.Bool],
+        ['query'],
+      ),
+    '_caffeineStorageBlobsToDelete' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Vec(IDL.Nat8))],
+        ['query'],
+      ),
+    '_caffeineStorageConfirmBlobDeletion' : IDL.Func(
+        [IDL.Vec(IDL.Vec(IDL.Nat8))],
+        [],
+        [],
+      ),
+    '_caffeineStorageCreateCertificate' : IDL.Func(
+        [IDL.Text],
+        [_CaffeineStorageCreateCertificateResult],
+        [],
+      ),
+    '_caffeineStorageRefillCashier' : IDL.Func(
+        [IDL.Opt(_CaffeineStorageRefillInformation)],
+        [_CaffeineStorageRefillResult],
+        [],
+      ),
+    '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'approveHotel' : IDL.Func([IDL.Nat], [], []),
     'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
@@ -343,6 +424,7 @@ export const idlFactory = ({ IDL }) => {
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
     'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
+    'getKycDocumentUrl' : IDL.Func([IDL.Nat], [IDL.Text], ['query']),
     'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
     'getMyCustomerProfile' : IDL.Func(
         [],
@@ -394,6 +476,8 @@ export const idlFactory = ({ IDL }) => {
           IDL.Text,
           IDL.Text,
           IDL.Int,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
         ],
         [IDL.Nat],
         [],

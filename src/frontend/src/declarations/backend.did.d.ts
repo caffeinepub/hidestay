@@ -63,6 +63,7 @@ export interface PropertyListing {
   'status' : PropertyListingStatus,
   'hotelName' : string,
   'ownerName' : string,
+  'imageUrls' : Array<string>,
   'city' : string,
   'pricePerNight' : bigint,
   'subscriptionPlan' : string,
@@ -72,6 +73,7 @@ export interface PropertyListing {
   'description' : string,
   'amenities' : Array<string>,
   'address' : string,
+  'kycDocumentUrl' : string,
   'roomType' : string,
 }
 export type PropertyListingStatus = { 'Approved' : null } |
@@ -94,7 +96,33 @@ export interface UserProfile {
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
+export interface _CaffeineStorageCreateCertificateResult {
+  'method' : string,
+  'blob_hash' : string,
+}
+export interface _CaffeineStorageRefillInformation {
+  'proposed_top_up_amount' : [] | [bigint],
+}
+export interface _CaffeineStorageRefillResult {
+  'success' : [] | [boolean],
+  'topped_up_amount' : [] | [bigint],
+}
 export interface _SERVICE {
+  '_caffeineStorageBlobIsLive' : ActorMethod<[Uint8Array], boolean>,
+  '_caffeineStorageBlobsToDelete' : ActorMethod<[], Array<Uint8Array>>,
+  '_caffeineStorageConfirmBlobDeletion' : ActorMethod<
+    [Array<Uint8Array>],
+    undefined
+  >,
+  '_caffeineStorageCreateCertificate' : ActorMethod<
+    [string],
+    _CaffeineStorageCreateCertificateResult
+  >,
+  '_caffeineStorageRefillCashier' : ActorMethod<
+    [[] | [_CaffeineStorageRefillInformation]],
+    _CaffeineStorageRefillResult
+  >,
+  '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'approveHotel' : ActorMethod<[bigint], undefined>,
   'approvePropertyListing' : ActorMethod<[bigint], undefined>,
@@ -124,6 +152,7 @@ export interface _SERVICE {
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getHotel' : ActorMethod<[bigint], Hotel>,
   'getHotelsForAdmin' : ActorMethod<[], Array<Hotel>>,
+  'getKycDocumentUrl' : ActorMethod<[bigint], string>,
   'getMyBookings' : ActorMethod<[], Array<Booking>>,
   'getMyCustomerProfile' : ActorMethod<[], [] | [CustomerProfile]>,
   'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
@@ -163,6 +192,8 @@ export interface _SERVICE {
       string,
       string,
       bigint,
+      Array<string>,
+      string,
     ],
     bigint
   >,

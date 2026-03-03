@@ -7,6 +7,32 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
+export interface CustomerProfile {
+    name: string;
+    email: string;
+    memberSince: bigint;
+    passwordHash: string;
+    mobile: string;
+}
+export interface PropertyListing {
+    id: bigint;
+    ownerEmail: string;
+    status: PropertyListingStatus;
+    hotelName: string;
+    ownerName: string;
+    imageUrls: Array<string>;
+    city: string;
+    pricePerNight: bigint;
+    subscriptionPlan: string;
+    ownerPhone: string;
+    submittedAt: bigint;
+    submittedBy: Principal;
+    description: string;
+    amenities: Array<string>;
+    address: string;
+    kycDocumentUrl: string;
+    roomType: string;
+}
 export interface HotelQueryParams {
     city?: string;
     amenities?: Array<string>;
@@ -31,30 +57,6 @@ export interface RoomInventory {
     roomType: string;
     totalRooms: bigint;
 }
-export interface CustomerProfile {
-    name: string;
-    email: string;
-    memberSince: bigint;
-    passwordHash: string;
-    mobile: string;
-}
-export interface PropertyListing {
-    id: bigint;
-    ownerEmail: string;
-    status: PropertyListingStatus;
-    hotelName: string;
-    ownerName: string;
-    city: string;
-    pricePerNight: bigint;
-    subscriptionPlan: string;
-    ownerPhone: string;
-    submittedAt: bigint;
-    submittedBy: Principal;
-    description: string;
-    amenities: Array<string>;
-    address: string;
-    roomType: string;
-}
 export interface Booking {
     id: bigint;
     status: Status;
@@ -68,16 +70,16 @@ export interface Booking {
     checkOut: string;
     phone: string;
 }
-export interface UserProfile {
-    name: string;
-    email: string;
-    phone: string;
-}
 export interface BlockedDate {
     id: bigint;
     date: string;
     hotelId: bigint;
     reason: string;
+}
+export interface UserProfile {
+    name: string;
+    email: string;
+    phone: string;
 }
 export enum HotelApprovalStatus {
     Approved = "Approved",
@@ -127,6 +129,7 @@ export interface backendInterface {
     getCallerUserRole(): Promise<UserRole>;
     getHotel(id: bigint): Promise<Hotel>;
     getHotelsForAdmin(): Promise<Array<Hotel>>;
+    getKycDocumentUrl(listingId: bigint): Promise<string>;
     getMyBookings(): Promise<Array<Booking>>;
     getMyCustomerProfile(): Promise<CustomerProfile | null>;
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
@@ -156,7 +159,7 @@ export interface backendInterface {
     revokeHotelOwner(hotelId: bigint): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
-    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
+    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     unlockAdminAccount(target: Principal): Promise<void>;

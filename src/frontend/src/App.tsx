@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { HttpAgent } from "@icp-sdk/core/agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -50,6 +51,7 @@ import {
   Eye,
   EyeOff,
   Home,
+  ImageIcon,
   Info,
   KeyRound,
   LayoutDashboard,
@@ -66,6 +68,7 @@ import {
   Star,
   ThumbsDown,
   ThumbsUp,
+  Upload,
   User,
   UserCircle,
   Users,
@@ -76,7 +79,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Booking, Hotel, PropertyListing } from "./backend.d";
 import {
@@ -86,10 +89,12 @@ import {
 } from "./backend.d";
 import { OwnerDashboard, useIsOwner } from "./components/OwnerDashboard";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
+import { loadConfig } from "./config";
 import {
   CustomerAuthProvider,
   useCustomerAuth,
 } from "./contexts/CustomerAuthContext";
+import { StorageClient } from "./utils/StorageClient";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Helpers
@@ -256,6 +261,7 @@ interface HotelDetailPageProps {
   searchParams: SearchParams;
   onBack: () => void;
   onBookNow: (hotel: Hotel) => void;
+  uploadedImageUrls?: string[];
 }
 
 function HotelDetailPage({
@@ -264,6 +270,7 @@ function HotelDetailPage({
   searchParams: _searchParams,
   onBack,
   onBookNow,
+  uploadedImageUrls,
 }: HotelDetailPageProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
@@ -280,19 +287,26 @@ function HotelDetailPage({
     enabled: !!actor,
   });
 
-  // Derived image sources from hotel data
-  const imageSrcs = hotel
-    ? [
-        getHotelImageSrc(hotel.imageIndex),
-        getHotelImageSrc((hotel.imageIndex % 15n) + 1n),
-        getHotelImageSrc(((hotel.imageIndex + 1n) % 15n) + 1n),
-      ]
-    : [];
+  // Derived image sources — prefer uploaded images, fall back to seeded images
+  const imageSrcs =
+    uploadedImageUrls && uploadedImageUrls.length > 0
+      ? uploadedImageUrls
+      : hotel
+        ? [
+            getHotelImageSrc(hotel.imageIndex),
+            getHotelImageSrc((hotel.imageIndex % 15n) + 1n),
+            getHotelImageSrc(((hotel.imageIndex + 1n) % 15n) + 1n),
+          ]
+        : [];
 
   const handlePrevImage = () =>
-    setActiveImageIndex((prev) => (prev === 0 ? 2 : prev - 1));
+    setActiveImageIndex((prev) =>
+      prev === 0 ? imageSrcs.length - 1 : prev - 1,
+    );
   const handleNextImage = () =>
-    setActiveImageIndex((prev) => (prev === 2 ? 0 : prev + 1));
+    setActiveImageIndex((prev) =>
+      prev === imageSrcs.length - 1 ? 0 : prev + 1,
+    );
 
   // Loading state
   if (isLoading) {
@@ -433,89 +447,131 @@ function HotelDetailPage({
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         {/* ── Image Gallery */}
         <section>
-          {/* Desktop: 2/3 + 1/3 grid */}
-          <div className="hidden lg:grid grid-cols-3 gap-3 h-[380px] rounded-2xl overflow-hidden">
-            <div className="col-span-2 relative overflow-hidden">
-              <img
-                data-ocid="hotel_detail.gallery_image.1"
-                src={imageSrcs[0]}
-                alt={`${hotel.name} - main view`}
-                className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <div className="flex-1 relative overflow-hidden rounded-tr-2xl">
+          {/* Desktop: adaptive layout based on image count */}
+          <div className="hidden lg:block">
+            {imageSrcs.length === 1 && (
+              <div className="relative h-[380px] rounded-2xl overflow-hidden">
                 <img
-                  data-ocid="hotel_detail.gallery_image.2"
-                  src={imageSrcs[1]}
-                  alt={`${hotel.name} - view 2`}
+                  data-ocid="hotel_detail.gallery_image.1"
+                  src={imageSrcs[0]}
+                  alt={`${hotel.name} - main view`}
                   className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
               </div>
-              <div className="flex-1 relative overflow-hidden rounded-br-2xl">
-                <img
-                  data-ocid="hotel_detail.gallery_image.3"
-                  src={imageSrcs[2]}
-                  alt={`${hotel.name} - view 3`}
-                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
-                />
+            )}
+            {imageSrcs.length === 2 && (
+              <div className="grid grid-cols-2 gap-3 h-[380px] rounded-2xl overflow-hidden">
+                {imageSrcs.map((src, idx) => (
+                  <div key={src} className="relative overflow-hidden">
+                    <img
+                      data-ocid={`hotel_detail.gallery_image.${idx + 1}`}
+                      src={src}
+                      alt={`${hotel.name} - view ${idx + 1}`}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                    />
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
+            {imageSrcs.length >= 3 && (
+              <div className="grid grid-cols-3 gap-3 h-[380px] rounded-2xl overflow-hidden">
+                <div className="col-span-2 relative overflow-hidden">
+                  <img
+                    data-ocid="hotel_detail.gallery_image.1"
+                    src={imageSrcs[0]}
+                    alt={`${hotel.name} - main view`}
+                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+                </div>
+                <div className="flex flex-col gap-3">
+                  <div className="flex-1 relative overflow-hidden rounded-tr-2xl">
+                    <img
+                      data-ocid="hotel_detail.gallery_image.2"
+                      src={imageSrcs[1]}
+                      alt={`${hotel.name} - view 2`}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                    />
+                  </div>
+                  <div className="flex-1 relative overflow-hidden rounded-br-2xl">
+                    <img
+                      data-ocid="hotel_detail.gallery_image.3"
+                      src={imageSrcs[2]}
+                      alt={`${hotel.name} - view 3`}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                    />
+                    {imageSrcs.length > 3 && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="text-white font-display font-bold text-xl">
+                          +{imageSrcs.length - 3} more
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Mobile: single image with navigation */}
           <div className="lg:hidden relative rounded-2xl overflow-hidden h-[260px] sm:h-[320px]">
-            <AnimatePresence mode="wait">
-              <motion.img
-                key={activeImageIndex}
-                data-ocid={`hotel_detail.gallery_image.${activeImageIndex + 1}`}
-                src={imageSrcs[activeImageIndex]}
-                alt={`${hotel.name} - view ${activeImageIndex + 1}`}
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.25 }}
-                className="w-full h-full object-cover absolute inset-0"
-              />
-            </AnimatePresence>
+            {imageSrcs.length > 0 && (
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={activeImageIndex}
+                  data-ocid={`hotel_detail.gallery_image.${activeImageIndex + 1}`}
+                  src={imageSrcs[activeImageIndex]}
+                  alt={`${hotel.name} - view ${activeImageIndex + 1}`}
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -30 }}
+                  transition={{ duration: 0.25 }}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              </AnimatePresence>
+            )}
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
-            {/* Navigation arrows */}
-            <button
-              type="button"
-              data-ocid="hotel_detail.gallery_prev_button"
-              onClick={handlePrevImage}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
-              aria-label="Previous image"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              data-ocid="hotel_detail.gallery_next_button"
-              onClick={handleNextImage}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
-              aria-label="Next image"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-            {/* Dots indicator */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {[0, 1, 2].map((i) => (
+            {/* Navigation arrows — only show if more than 1 image */}
+            {imageSrcs.length > 1 && (
+              <>
                 <button
-                  key={i}
                   type="button"
-                  onClick={() => setActiveImageIndex(i)}
-                  className={`h-1.5 rounded-full transition-all duration-200 ${
-                    i === activeImageIndex
-                      ? "w-5 bg-white"
-                      : "w-1.5 bg-white/50"
-                  }`}
-                  aria-label={`Go to image ${i + 1}`}
-                />
-              ))}
-            </div>
+                  data-ocid="hotel_detail.gallery_prev_button"
+                  onClick={handlePrevImage}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
+                  aria-label="Previous image"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  data-ocid="hotel_detail.gallery_next_button"
+                  onClick={handleNextImage}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-black/60 transition-colors"
+                  aria-label="Next image"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                {/* Dots indicator */}
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {imageSrcs.map((src, i) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setActiveImageIndex(i)}
+                      className={`h-1.5 rounded-full transition-all duration-200 ${
+                        i === activeImageIndex
+                          ? "w-5 bg-white"
+                          : "w-1.5 bg-white/50"
+                      }`}
+                      aria-label={`Go to image ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -1329,6 +1385,14 @@ interface ListPropertyModalProps {
   actor: import("./backend").backendInterface | null;
 }
 
+interface ImageFile {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: "idle" | "uploading" | "done" | "error";
+  uploadedUrl?: string;
+}
+
 const AMENITY_OPTIONS = ["WiFi", "AC", "Parking"];
 const ROOM_TYPES = ["Standard", "Deluxe", "Suite"];
 
@@ -1337,6 +1401,18 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
   const isLoggedIn = !!identity;
 
   const [submittedId, setSubmittedId] = useState<bigint | null>(null);
+  const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // KYC document state
+  const [kycFile, setKycFile] = useState<{
+    file: File;
+    previewUrl: string;
+    status: "idle" | "uploading" | "done" | "error";
+    uploadedUrl?: string;
+  } | null>(null);
+  const kycInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     hotelName: "",
@@ -1363,9 +1439,137 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
         : [...prev.amenities, amenity],
     }));
 
+  const handleFilesAdd = (files: FileList | File[]) => {
+    const newFiles = Array.from(files);
+    const remaining = 5 - imageFiles.length;
+    let added = 0;
+    for (const file of newFiles) {
+      if (added >= remaining) {
+        toast.error("Maximum 5 images allowed");
+        break;
+      }
+      if (!["image/jpeg", "image/png"].includes(file.type)) {
+        toast.error("Only JPG and PNG files are allowed");
+        continue;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds 2MB limit`);
+        continue;
+      }
+      const id = crypto.randomUUID();
+      const previewUrl = URL.createObjectURL(file);
+      setImageFiles((prev) => [
+        ...prev,
+        { id, file, previewUrl, status: "idle" },
+      ]);
+      added++;
+    }
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setImageFiles((prev) => {
+      const f = prev.find((x) => x.id === id);
+      if (f) URL.revokeObjectURL(f.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+  };
+
+  const handleKycFileChange = (file: File) => {
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast.error("Only JPG and PNG files are allowed");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("KYC document must be under 2MB");
+      return;
+    }
+    if (kycFile?.previewUrl) URL.revokeObjectURL(kycFile.previewUrl);
+    setKycFile({ file, previewUrl: URL.createObjectURL(file), status: "idle" });
+  };
+
+  const handleRemoveKyc = () => {
+    if (kycFile?.previewUrl) URL.revokeObjectURL(kycFile.previewUrl);
+    setKycFile(null);
+  };
+
   const { mutate: submitListing, isPending } = useMutation({
     mutationFn: async () => {
       if (!actor) throw new Error("Not connected");
+
+      const imageUrls: string[] = [];
+      let kycDocumentUrl = "";
+
+      // Initialize storage client if we have any files to upload
+      const needsStorage =
+        (imageFiles.length > 0 || kycFile !== null) && identity;
+      let storageClient: StorageClient | null = null;
+
+      if (needsStorage && identity) {
+        const config = await loadConfig();
+        const agent = new HttpAgent({
+          identity,
+          host: config.backend_host,
+        });
+        if (config.backend_host?.includes("localhost")) {
+          await agent.fetchRootKey().catch(console.error);
+        }
+        storageClient = new StorageClient(
+          config.bucket_name,
+          config.storage_gateway_url,
+          config.backend_canister_id,
+          config.project_id,
+          agent,
+        );
+      }
+
+      // Upload hotel images
+      if (imageFiles.length > 0 && storageClient) {
+        for (const imgFile of imageFiles) {
+          setImageFiles((prev) =>
+            prev.map((f) =>
+              f.id === imgFile.id ? { ...f, status: "uploading" } : f,
+            ),
+          );
+          try {
+            const bytes = new Uint8Array(await imgFile.file.arrayBuffer());
+            const { hash } = await storageClient.putFile(bytes);
+            const url = await storageClient.getDirectURL(hash);
+            imageUrls.push(url);
+            setImageFiles((prev) =>
+              prev.map((f) =>
+                f.id === imgFile.id
+                  ? { ...f, status: "done", uploadedUrl: url }
+                  : f,
+              ),
+            );
+          } catch {
+            setImageFiles((prev) =>
+              prev.map((f) =>
+                f.id === imgFile.id ? { ...f, status: "error" } : f,
+              ),
+            );
+            throw new Error(`Failed to upload ${imgFile.file.name}`);
+          }
+        }
+      }
+
+      // Upload KYC document
+      if (kycFile && storageClient) {
+        setKycFile((prev) => (prev ? { ...prev, status: "uploading" } : null));
+        try {
+          const bytes = new Uint8Array(await kycFile.file.arrayBuffer());
+          const { hash } = await storageClient.putFile(bytes);
+          const url = await storageClient.getDirectURL(hash);
+          kycDocumentUrl = url;
+          setKycFile((prev) =>
+            prev ? { ...prev, status: "done", uploadedUrl: url } : null,
+          );
+        } catch {
+          setKycFile((prev) => (prev ? { ...prev, status: "error" } : null));
+          throw new Error("Failed to upload KYC document");
+        }
+      }
+
       const id = await actor.submitPropertyListing(
         form.ownerName,
         form.ownerPhone,
@@ -1379,6 +1583,8 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
         form.description,
         form.subscriptionPlan,
         BigInt(Date.now()),
+        imageUrls,
+        kycDocumentUrl,
       );
       return id;
     },
@@ -1386,14 +1592,23 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
       setSubmittedId(id);
       toast.success("Property submitted for review!");
     },
-    onError: () => {
-      toast.error("Submission failed. Please try again.");
+    onError: (err) => {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Submission failed. Please try again.",
+      );
     },
   });
 
   const handleClose = () => {
     onClose();
     setSubmittedId(null);
+    for (const f of imageFiles) URL.revokeObjectURL(f.previewUrl);
+    setImageFiles([]);
+    setIsDragging(false);
+    if (kycFile?.previewUrl) URL.revokeObjectURL(kycFile.previewUrl);
+    setKycFile(null);
     setForm({
       hotelName: "",
       city: "",
@@ -1726,6 +1941,269 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Section: Hotel Images */}
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 rounded-lg bg-brand flex items-center justify-center">
+                    <ImageIcon className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    Hotel Images
+                  </h3>
+                  <span className="text-xs text-muted-foreground ml-1">
+                    (Optional · JPG/PNG · max 5 · 2MB each)
+                  </span>
+                </div>
+
+                {/* Dropzone */}
+                {imageFiles.length < 5 && (
+                  <button
+                    type="button"
+                    data-ocid="list_property.image_dropzone"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      handleFilesAdd(e.dataTransfer.files);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`w-full border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+                      isDragging
+                        ? "border-brand bg-brand/5"
+                        : "border-border hover:border-brand/50 hover:bg-muted/30"
+                    }`}
+                  >
+                    <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-foreground">
+                      Drop images here or click to browse
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      JPG or PNG · Max 5 images · 2MB each
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) handleFilesAdd(e.target.files);
+                        e.target.value = "";
+                      }}
+                      data-ocid="list_property.image_upload_button"
+                    />
+                  </button>
+                )}
+
+                {/* Previews */}
+                {imageFiles.length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-3">
+                    {imageFiles.map((img, idx) => (
+                      <div
+                        key={img.id}
+                        data-ocid={`list_property.image_preview.${idx + 1}`}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-border group"
+                      >
+                        <img
+                          src={img.previewUrl}
+                          alt={`Preview ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Status overlay */}
+                        {img.status === "uploading" && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 text-white animate-spin" />
+                          </div>
+                        )}
+                        {img.status === "done" && (
+                          <div className="absolute top-1 left-1 bg-green-500 rounded-full p-0.5">
+                            <CheckCircle className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                        {img.status === "error" && (
+                          <div className="absolute top-1 left-1 bg-red-500 rounded-full p-0.5">
+                            <XCircle className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                        {/* Remove button */}
+                        {img.status !== "uploading" && (
+                          <button
+                            type="button"
+                            data-ocid={`list_property.image_remove_button.${idx + 1}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveImage(img.id);
+                            }}
+                            className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3 text-white" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-2">
+                  {imageFiles.length}/5 images added
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Section: KYC Document */}
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-display font-bold text-base text-foreground">
+                    KYC Document (Aadhaar / Govt ID)
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4 ml-9">
+                  Required for verification · JPG or PNG · Max 2MB · Single file
+                </p>
+
+                {!kycFile ? (
+                  /* KYC Dropzone */
+                  <button
+                    type="button"
+                    data-ocid="list_property.kyc_dropzone"
+                    onClick={() => kycInputRef.current?.click()}
+                    className="w-full border-2 border-dashed border-teal-200 hover:border-teal-400 hover:bg-teal-50/30 rounded-xl p-6 text-center cursor-pointer transition-colors"
+                  >
+                    <ShieldCheck className="w-8 h-8 text-teal-400 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-foreground">
+                      Upload Aadhaar / Government ID
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Click to browse · JPG or PNG · Max 2MB
+                    </p>
+                    <input
+                      ref={kycInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      className="hidden"
+                      data-ocid="list_property.kyc_upload_button"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleKycFileChange(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </button>
+                ) : (
+                  /* KYC Preview */
+                  <div className="flex items-start gap-4">
+                    <div
+                      data-ocid="list_property.kyc_preview"
+                      className="relative w-[120px] h-[120px] rounded-xl overflow-hidden border-2 border-teal-200 flex-shrink-0 group"
+                    >
+                      <img
+                        src={kycFile.previewUrl}
+                        alt="KYC document preview"
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Secure document overlay (default) */}
+                      {kycFile.status === "idle" && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-teal-900/70 flex items-center justify-center gap-1 py-1.5">
+                          <ShieldCheck className="w-3 h-3 text-teal-200" />
+                          <span className="text-[10px] text-teal-100 font-semibold">
+                            Secure
+                          </span>
+                        </div>
+                      )}
+                      {/* Uploading overlay */}
+                      {kycFile.status === "uploading" && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        </div>
+                      )}
+                      {/* Done overlay */}
+                      {kycFile.status === "done" && (
+                        <div className="absolute top-1.5 left-1.5 bg-green-500 rounded-full p-0.5">
+                          <CheckCircle className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      )}
+                      {/* Error overlay */}
+                      {kycFile.status === "error" && (
+                        <div className="absolute top-1.5 left-1.5 bg-red-500 rounded-full p-0.5">
+                          <XCircle className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      )}
+                      {/* Remove button */}
+                      {kycFile.status !== "uploading" && (
+                        <button
+                          type="button"
+                          data-ocid="list_property.kyc_remove_button"
+                          onClick={handleRemoveKyc}
+                          className="absolute top-1.5 right-1.5 bg-black/60 hover:bg-black/80 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove KYC document"
+                        >
+                          <X className="w-3 h-3 text-white" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 pt-1">
+                      <p className="text-sm font-semibold text-foreground truncate">
+                        {kycFile.file.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {(kycFile.file.size / 1024).toFixed(0)} KB ·{" "}
+                        {kycFile.file.type === "image/jpeg" ? "JPG" : "PNG"}
+                      </p>
+                      {kycFile.status === "idle" && (
+                        <Badge className="mt-2 text-[10px] bg-teal-50 text-teal-700 border border-teal-200 gap-1">
+                          <ShieldCheck className="w-2.5 h-2.5" />
+                          Ready to upload
+                        </Badge>
+                      )}
+                      {kycFile.status === "uploading" && (
+                        <Badge className="mt-2 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          Uploading securely…
+                        </Badge>
+                      )}
+                      {kycFile.status === "done" && (
+                        <Badge className="mt-2 text-[10px] bg-green-50 text-green-700 border border-green-200 gap-1">
+                          <CheckCircle className="w-2.5 h-2.5" />
+                          Uploaded securely
+                        </Badge>
+                      )}
+                      {kycFile.status === "error" && (
+                        <Badge className="mt-2 text-[10px] bg-red-50 text-red-700 border border-red-200 gap-1">
+                          <XCircle className="w-2.5 h-2.5" />
+                          Upload failed
+                        </Badge>
+                      )}
+                      {kycFile.status !== "uploading" && (
+                        <button
+                          type="button"
+                          data-ocid="list_property.kyc_remove_button"
+                          onClick={handleRemoveKyc}
+                          className="mt-3 text-xs text-muted-foreground hover:text-red-600 transition-colors flex items-center gap-1"
+                        >
+                          <X className="w-3 h-3" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-3 flex items-start gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-500 flex-shrink-0 mt-0.5" />
+                  KYC documents are stored securely and only accessible to
+                  administrators.
+                </p>
               </div>
 
               <Separator />
@@ -4939,6 +5417,7 @@ function AppInner() {
 
   const [selectedHotelId, setSelectedHotelId] = useState<bigint | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
+  const [selectedHotelImages, setSelectedHotelImages] = useState<string[]>([]);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
@@ -5052,6 +5531,8 @@ function AppInner() {
   };
 
   const handleViewDetails = (hotel: Hotel) => {
+    // Reset uploaded images — search results don't carry listing images
+    setSelectedHotelImages([]);
     setSelectedHotelId(hotel.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -5130,6 +5611,7 @@ function AppInner() {
               searchParams={searchParams}
               onBack={handleBackFromDetail}
               onBookNow={handleBookNow}
+              uploadedImageUrls={selectedHotelImages}
             />
           </motion.div>
         ) : (

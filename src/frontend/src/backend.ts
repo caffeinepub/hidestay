@@ -89,6 +89,39 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface _CaffeineStorageRefillInformation {
+    proposed_top_up_amount?: bigint;
+}
+export interface CustomerProfile {
+    name: string;
+    email: string;
+    memberSince: bigint;
+    passwordHash: string;
+    mobile: string;
+}
+export interface _CaffeineStorageCreateCertificateResult {
+    method: string;
+    blob_hash: string;
+}
+export interface PropertyListing {
+    id: bigint;
+    ownerEmail: string;
+    status: PropertyListingStatus;
+    hotelName: string;
+    ownerName: string;
+    imageUrls: Array<string>;
+    city: string;
+    pricePerNight: bigint;
+    subscriptionPlan: string;
+    ownerPhone: string;
+    submittedAt: bigint;
+    submittedBy: Principal;
+    description: string;
+    amenities: Array<string>;
+    address: string;
+    kycDocumentUrl: string;
+    roomType: string;
+}
 export interface HotelQueryParams {
     city?: string;
     amenities?: Array<string>;
@@ -113,30 +146,6 @@ export interface RoomInventory {
     roomType: string;
     totalRooms: bigint;
 }
-export interface CustomerProfile {
-    name: string;
-    email: string;
-    memberSince: bigint;
-    passwordHash: string;
-    mobile: string;
-}
-export interface PropertyListing {
-    id: bigint;
-    ownerEmail: string;
-    status: PropertyListingStatus;
-    hotelName: string;
-    ownerName: string;
-    city: string;
-    pricePerNight: bigint;
-    subscriptionPlan: string;
-    ownerPhone: string;
-    submittedAt: bigint;
-    submittedBy: Principal;
-    description: string;
-    amenities: Array<string>;
-    address: string;
-    roomType: string;
-}
 export interface Booking {
     id: bigint;
     status: Status;
@@ -150,16 +159,20 @@ export interface Booking {
     checkOut: string;
     phone: string;
 }
-export interface UserProfile {
-    name: string;
-    email: string;
-    phone: string;
-}
 export interface BlockedDate {
     id: bigint;
     date: string;
     hotelId: bigint;
     reason: string;
+}
+export interface UserProfile {
+    name: string;
+    email: string;
+    phone: string;
+}
+export interface _CaffeineStorageRefillResult {
+    success?: boolean;
+    topped_up_amount?: bigint;
 }
 export enum HotelApprovalStatus {
     Approved = "Approved",
@@ -182,6 +195,12 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
+    _caffeineStorageBlobIsLive(hash: Uint8Array): Promise<boolean>;
+    _caffeineStorageBlobsToDelete(): Promise<Array<Uint8Array>>;
+    _caffeineStorageConfirmBlobDeletion(blobs: Array<Uint8Array>): Promise<void>;
+    _caffeineStorageCreateCertificate(blobHash: string): Promise<_CaffeineStorageCreateCertificateResult>;
+    _caffeineStorageRefillCashier(refillInformation: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult>;
+    _caffeineStorageUpdateGatewayPrincipals(): Promise<void>;
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     approveHotel(id: bigint): Promise<void>;
     approvePropertyListing(listingId: bigint): Promise<void>;
@@ -210,6 +229,7 @@ export interface backendInterface {
     getCallerUserRole(): Promise<UserRole>;
     getHotel(id: bigint): Promise<Hotel>;
     getHotelsForAdmin(): Promise<Array<Hotel>>;
+    getKycDocumentUrl(listingId: bigint): Promise<string>;
     getMyBookings(): Promise<Array<Booking>>;
     getMyCustomerProfile(): Promise<CustomerProfile | null>;
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
@@ -239,7 +259,7 @@ export interface backendInterface {
     revokeHotelOwner(hotelId: bigint): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
-    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
+    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     unlockAdminAccount(target: Principal): Promise<void>;
@@ -260,9 +280,93 @@ export interface backendInterface {
         error: string;
     }>;
 }
-import type { Booking as _Booking, CustomerProfile as _CustomerProfile, Hotel as _Hotel, HotelApprovalStatus as _HotelApprovalStatus, HotelQueryParams as _HotelQueryParams, PropertyListing as _PropertyListing, PropertyListingStatus as _PropertyListingStatus, Status as _Status, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { Booking as _Booking, CustomerProfile as _CustomerProfile, Hotel as _Hotel, HotelApprovalStatus as _HotelApprovalStatus, HotelQueryParams as _HotelQueryParams, PropertyListing as _PropertyListing, PropertyListingStatus as _PropertyListingStatus, Status as _Status, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
+    async _caffeineStorageBlobIsLive(arg0: Uint8Array): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageBlobIsLive(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageBlobIsLive(arg0);
+            return result;
+        }
+    }
+    async _caffeineStorageBlobsToDelete(): Promise<Array<Uint8Array>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageBlobsToDelete();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageBlobsToDelete();
+            return result;
+        }
+    }
+    async _caffeineStorageConfirmBlobDeletion(arg0: Array<Uint8Array>): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageConfirmBlobDeletion(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageConfirmBlobDeletion(arg0);
+            return result;
+        }
+    }
+    async _caffeineStorageCreateCertificate(arg0: string): Promise<_CaffeineStorageCreateCertificateResult> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageCreateCertificate(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageCreateCertificate(arg0);
+            return result;
+        }
+    }
+    async _caffeineStorageRefillCashier(arg0: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageRefillCashier(to_candid_opt_n1(this._uploadFile, this._downloadFile, arg0));
+                return from_candid__CaffeineStorageRefillResult_n4(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageRefillCashier(to_candid_opt_n1(this._uploadFile, this._downloadFile, arg0));
+            return from_candid__CaffeineStorageRefillResult_n4(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async _caffeineStorageUpdateGatewayPrincipals(): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._caffeineStorageUpdateGatewayPrincipals();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._caffeineStorageUpdateGatewayPrincipals();
+            return result;
+        }
+    }
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
         if (this.processError) {
             try {
@@ -308,14 +412,14 @@ export class Backend implements backendInterface {
     async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n8(this._uploadFile, this._downloadFile, arg1));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n8(this._uploadFile, this._downloadFile, arg1));
             return result;
         }
     }
@@ -371,14 +475,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.changePassword(arg0, arg1);
-                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.changePassword(arg0, arg1);
-            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
         }
     }
     async createBooking(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: bigint): Promise<bigint> {
@@ -430,14 +534,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getAllBookings();
-                return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getAllBookings();
-            return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
         }
     }
     async getBlockedDates(): Promise<Array<BlockedDate>> {
@@ -458,154 +562,168 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getBooking(arg0);
-                return from_candid_Booking_n5(this._uploadFile, this._downloadFile, result);
+                return from_candid_Booking_n12(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getBooking(arg0);
-            return from_candid_Booking_n5(this._uploadFile, this._downloadFile, result);
+            return from_candid_Booking_n12(this._uploadFile, this._downloadFile, result);
         }
     }
     async getBookingsByEmail(arg0: string): Promise<Array<Booking>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getBookingsByEmail(arg0);
-                return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getBookingsByEmail(arg0);
-            return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
         }
     }
     async getCallerUserProfile(): Promise<UserProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserProfile();
-                return from_candid_opt_n9(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserProfile();
-            return from_candid_opt_n9(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
         }
     }
     async getCallerUserRole(): Promise<UserRole> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n10(this._uploadFile, this._downloadFile, result);
+                return from_candid_UserRole_n17(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n10(this._uploadFile, this._downloadFile, result);
+            return from_candid_UserRole_n17(this._uploadFile, this._downloadFile, result);
         }
     }
     async getHotel(arg0: bigint): Promise<Hotel> {
         if (this.processError) {
             try {
                 const result = await this.actor.getHotel(arg0);
-                return from_candid_Hotel_n12(this._uploadFile, this._downloadFile, result);
+                return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getHotel(arg0);
-            return from_candid_Hotel_n12(this._uploadFile, this._downloadFile, result);
+            return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
         }
     }
     async getHotelsForAdmin(): Promise<Array<Hotel>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getHotelsForAdmin();
-                return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getHotelsForAdmin();
-            return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getKycDocumentUrl(arg0: bigint): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getKycDocumentUrl(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getKycDocumentUrl(arg0);
+            return result;
         }
     }
     async getMyBookings(): Promise<Array<Booking>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getMyBookings();
-                return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getMyBookings();
-            return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
         }
     }
     async getMyCustomerProfile(): Promise<CustomerProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getMyCustomerProfile();
-                return from_candid_opt_n17(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n24(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getMyCustomerProfile();
-            return from_candid_opt_n17(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n24(this._uploadFile, this._downloadFile, result);
         }
     }
     async getMyPropertyListings(): Promise<Array<PropertyListing>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getMyPropertyListings();
-                return from_candid_vec_n18(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getMyPropertyListings();
-            return from_candid_vec_n18(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
         }
     }
     async getOwnerBookings(): Promise<Array<Booking>> {
         if (this.processError) {
             try {
                 const result = await this.actor.getOwnerBookings();
-                return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getOwnerBookings();
-            return from_candid_vec_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n11(this._uploadFile, this._downloadFile, result);
         }
     }
     async getOwnerHotel(): Promise<Hotel> {
         if (this.processError) {
             try {
                 const result = await this.actor.getOwnerHotel();
-                return from_candid_Hotel_n12(this._uploadFile, this._downloadFile, result);
+                return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getOwnerHotel();
-            return from_candid_Hotel_n12(this._uploadFile, this._downloadFile, result);
+            return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
         }
     }
     async getOwnerRoomInventory(): Promise<RoomInventory> {
@@ -626,28 +744,28 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getPropertyListings();
-                return from_candid_vec_n18(this._uploadFile, this._downloadFile, result);
+                return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getPropertyListings();
-            return from_candid_vec_n18(this._uploadFile, this._downloadFile, result);
+            return from_candid_vec_n25(this._uploadFile, this._downloadFile, result);
         }
     }
     async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserProfile(arg0);
-                return from_candid_opt_n9(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUserProfile(arg0);
-            return from_candid_opt_n9(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n16(this._uploadFile, this._downloadFile, result);
         }
     }
     async isCallerAdmin(): Promise<boolean> {
@@ -688,14 +806,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.loginCustomer(arg0, arg1);
-                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.loginCustomer(arg0, arg1);
-            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
         }
     }
     async registerCustomer(arg0: string, arg1: string, arg2: string, arg3: string): Promise<{
@@ -708,14 +826,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.registerCustomer(arg0, arg1, arg2, arg3);
-                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.registerCustomer(arg0, arg1, arg2, arg3);
-            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
         }
     }
     async rejectHotel(arg0: bigint): Promise<void> {
@@ -777,28 +895,28 @@ export class Backend implements backendInterface {
     async searchHotels(arg0: HotelQueryParams): Promise<Array<Hotel>> {
         if (this.processError) {
             try {
-                const result = await this.actor.searchHotels(to_candid_HotelQueryParams_n23(this._uploadFile, this._downloadFile, arg0));
-                return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+                const result = await this.actor.searchHotels(to_candid_HotelQueryParams_n30(this._uploadFile, this._downloadFile, arg0));
+                return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.searchHotels(to_candid_HotelQueryParams_n23(this._uploadFile, this._downloadFile, arg0));
-            return from_candid_vec_n16(this._uploadFile, this._downloadFile, result);
+            const result = await this.actor.searchHotels(to_candid_HotelQueryParams_n30(this._uploadFile, this._downloadFile, arg0));
+            return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
         }
     }
-    async submitPropertyListing(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: string, arg8: Array<string>, arg9: string, arg10: string, arg11: bigint): Promise<bigint> {
+    async submitPropertyListing(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: string, arg8: Array<string>, arg9: string, arg10: string, arg11: bigint, arg12: Array<string>, arg13: string): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+                const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+            const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
             return result;
         }
     }
@@ -847,14 +965,14 @@ export class Backend implements backendInterface {
     async updateBookingStatus(arg0: bigint, arg1: Status): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateBookingStatus(arg0, to_candid_Status_n25(this._uploadFile, this._downloadFile, arg1));
+                const result = await this.actor.updateBookingStatus(arg0, to_candid_Status_n32(this._uploadFile, this._downloadFile, arg1));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateBookingStatus(arg0, to_candid_Status_n25(this._uploadFile, this._downloadFile, arg1));
+            const result = await this.actor.updateBookingStatus(arg0, to_candid_Status_n32(this._uploadFile, this._downloadFile, arg1));
             return result;
         }
     }
@@ -868,14 +986,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.updateCustomerProfile(arg0, arg1, arg2);
-                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.updateCustomerProfile(arg0, arg1, arg2);
-            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
         }
     }
     async updateRoomInventory(arg0: string, arg1: bigint): Promise<void> {
@@ -902,45 +1020,93 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.verifyAdminOtp(arg0);
-                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.verifyAdminOtp(arg0);
-            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n10(this._uploadFile, this._downloadFile, result);
         }
     }
 }
-function from_candid_Booking_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Booking): Booking {
-    return from_candid_record_n6(_uploadFile, _downloadFile, value);
-}
-function from_candid_HotelApprovalStatus_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _HotelApprovalStatus): HotelApprovalStatus {
-    return from_candid_variant_n15(_uploadFile, _downloadFile, value);
-}
-function from_candid_Hotel_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Hotel): Hotel {
+function from_candid_Booking_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Booking): Booking {
     return from_candid_record_n13(_uploadFile, _downloadFile, value);
 }
-function from_candid_PropertyListingStatus_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PropertyListingStatus): PropertyListingStatus {
+function from_candid_HotelApprovalStatus_n21(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _HotelApprovalStatus): HotelApprovalStatus {
     return from_candid_variant_n22(_uploadFile, _downloadFile, value);
 }
-function from_candid_PropertyListing_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PropertyListing): PropertyListing {
+function from_candid_Hotel_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Hotel): Hotel {
     return from_candid_record_n20(_uploadFile, _downloadFile, value);
 }
-function from_candid_Status_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Status): Status {
-    return from_candid_variant_n8(_uploadFile, _downloadFile, value);
+function from_candid_PropertyListingStatus_n28(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PropertyListingStatus): PropertyListingStatus {
+    return from_candid_variant_n29(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n11(_uploadFile, _downloadFile, value);
+function from_candid_PropertyListing_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PropertyListing): PropertyListing {
+    return from_candid_record_n27(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_CustomerProfile]): CustomerProfile | null {
+function from_candid_Status_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Status): Status {
+    return from_candid_variant_n15(_uploadFile, _downloadFile, value);
+}
+function from_candid_UserRole_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n18(_uploadFile, _downloadFile, value);
+}
+function from_candid__CaffeineStorageRefillResult_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: __CaffeineStorageRefillResult): _CaffeineStorageRefillResult {
+    return from_candid_record_n5(_uploadFile, _downloadFile, value);
+}
+function from_candid_opt_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_opt_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+function from_candid_opt_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_CustomerProfile]): CustomerProfile | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [boolean]): boolean | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [bigint]): bigint | null {
     return value.length === 0 ? null : value[0];
 }
 function from_candid_record_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: bigint;
+    status: _Status;
+    created: bigint;
+    checkIn: string;
+    owner: Principal;
+    guestCount: bigint;
+    hotelId: bigint;
+    guestName: string;
+    guestEmail: string;
+    checkOut: string;
+    phone: string;
+}): {
+    id: bigint;
+    status: Status;
+    created: bigint;
+    checkIn: string;
+    owner: Principal;
+    guestCount: bigint;
+    hotelId: bigint;
+    guestName: string;
+    guestEmail: string;
+    checkOut: string;
+    phone: string;
+} {
+    return {
+        id: value.id,
+        status: from_candid_Status_n14(_uploadFile, _downloadFile, value.status),
+        created: value.created,
+        checkIn: value.checkIn,
+        owner: value.owner,
+        guestCount: value.guestCount,
+        hotelId: value.hotelId,
+        guestName: value.guestName,
+        guestEmail: value.guestEmail,
+        checkOut: value.checkOut,
+        phone: value.phone
+    };
+}
+function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
     starRating: bigint;
     city: string;
@@ -971,17 +1137,18 @@ function from_candid_record_n13(_uploadFile: (file: ExternalBlob) => Promise<Uin
         name: value.name,
         description: value.description,
         amenities: value.amenities,
-        approvalStatus: from_candid_HotelApprovalStatus_n14(_uploadFile, _downloadFile, value.approvalStatus),
+        approvalStatus: from_candid_HotelApprovalStatus_n21(_uploadFile, _downloadFile, value.approvalStatus),
         address: value.address,
         imageIndex: value.imageIndex
     };
 }
-function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_record_n27(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
     ownerEmail: string;
     status: _PropertyListingStatus;
     hotelName: string;
     ownerName: string;
+    imageUrls: Array<string>;
     city: string;
     pricePerNight: bigint;
     subscriptionPlan: string;
@@ -991,6 +1158,7 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     description: string;
     amenities: Array<string>;
     address: string;
+    kycDocumentUrl: string;
     roomType: string;
 }): {
     id: bigint;
@@ -998,6 +1166,7 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     status: PropertyListingStatus;
     hotelName: string;
     ownerName: string;
+    imageUrls: Array<string>;
     city: string;
     pricePerNight: bigint;
     subscriptionPlan: string;
@@ -1007,14 +1176,16 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     description: string;
     amenities: Array<string>;
     address: string;
+    kycDocumentUrl: string;
     roomType: string;
 } {
     return {
         id: value.id,
         ownerEmail: value.ownerEmail,
-        status: from_candid_PropertyListingStatus_n21(_uploadFile, _downloadFile, value.status),
+        status: from_candid_PropertyListingStatus_n28(_uploadFile, _downloadFile, value.status),
         hotelName: value.hotelName,
         ownerName: value.ownerName,
+        imageUrls: value.imageUrls,
         city: value.city,
         pricePerNight: value.pricePerNight,
         subscriptionPlan: value.subscriptionPlan,
@@ -1024,76 +1195,23 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
         description: value.description,
         amenities: value.amenities,
         address: value.address,
+        kycDocumentUrl: value.kycDocumentUrl,
         roomType: value.roomType
     };
 }
-function from_candid_record_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    id: bigint;
-    status: _Status;
-    created: bigint;
-    checkIn: string;
-    owner: Principal;
-    guestCount: bigint;
-    hotelId: bigint;
-    guestName: string;
-    guestEmail: string;
-    checkOut: string;
-    phone: string;
+function from_candid_record_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    success: [] | [boolean];
+    topped_up_amount: [] | [bigint];
 }): {
-    id: bigint;
-    status: Status;
-    created: bigint;
-    checkIn: string;
-    owner: Principal;
-    guestCount: bigint;
-    hotelId: bigint;
-    guestName: string;
-    guestEmail: string;
-    checkOut: string;
-    phone: string;
+    success?: boolean;
+    topped_up_amount?: bigint;
 } {
     return {
-        id: value.id,
-        status: from_candid_Status_n7(_uploadFile, _downloadFile, value.status),
-        created: value.created,
-        checkIn: value.checkIn,
-        owner: value.owner,
-        guestCount: value.guestCount,
-        hotelId: value.hotelId,
-        guestName: value.guestName,
-        guestEmail: value.guestEmail,
-        checkOut: value.checkOut,
-        phone: value.phone
+        success: record_opt_to_undefined(from_candid_opt_n6(_uploadFile, _downloadFile, value.success)),
+        topped_up_amount: record_opt_to_undefined(from_candid_opt_n7(_uploadFile, _downloadFile, value.topped_up_amount))
     };
 }
-function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    admin: null;
-} | {
-    user: null;
-} | {
-    guest: null;
-}): UserRole {
-    return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
-}
-function from_candid_variant_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    Approved: null;
-} | {
-    Rejected: null;
-} | {
-    Pending: null;
-}): HotelApprovalStatus {
-    return "Approved" in value ? HotelApprovalStatus.Approved : "Rejected" in value ? HotelApprovalStatus.Rejected : "Pending" in value ? HotelApprovalStatus.Pending : value;
-}
-function from_candid_variant_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
-    Approved: null;
-} | {
-    Rejected: null;
-} | {
-    PendingApproval: null;
-}): PropertyListingStatus {
-    return "Approved" in value ? PropertyListingStatus.Approved : "Rejected" in value ? PropertyListingStatus.Rejected : "PendingApproval" in value ? PropertyListingStatus.PendingApproval : value;
-}
-function from_candid_variant_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     ok: string;
 } | {
     error: string;
@@ -1112,7 +1230,7 @@ function from_candid_variant_n3(_uploadFile: (file: ExternalBlob) => Promise<Uin
         error: value.error
     } : value;
 }
-function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     Confirmed: null;
 } | {
     Cancelled: null;
@@ -1121,25 +1239,67 @@ function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }): Status {
     return "Confirmed" in value ? Status.Confirmed : "Cancelled" in value ? Status.Cancelled : "Pending" in value ? Status.Pending : value;
 }
-function from_candid_vec_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Hotel>): Array<Hotel> {
-    return value.map((x)=>from_candid_Hotel_n12(_uploadFile, _downloadFile, x));
+function from_candid_variant_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+}): UserRole {
+    return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
-function from_candid_vec_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_PropertyListing>): Array<PropertyListing> {
-    return value.map((x)=>from_candid_PropertyListing_n19(_uploadFile, _downloadFile, x));
+function from_candid_variant_n22(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    Approved: null;
+} | {
+    Rejected: null;
+} | {
+    Pending: null;
+}): HotelApprovalStatus {
+    return "Approved" in value ? HotelApprovalStatus.Approved : "Rejected" in value ? HotelApprovalStatus.Rejected : "Pending" in value ? HotelApprovalStatus.Pending : value;
 }
-function from_candid_vec_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Booking>): Array<Booking> {
-    return value.map((x)=>from_candid_Booking_n5(_uploadFile, _downloadFile, x));
+function from_candid_variant_n29(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    Approved: null;
+} | {
+    Rejected: null;
+} | {
+    PendingApproval: null;
+}): PropertyListingStatus {
+    return "Approved" in value ? PropertyListingStatus.Approved : "Rejected" in value ? PropertyListingStatus.Rejected : "PendingApproval" in value ? PropertyListingStatus.PendingApproval : value;
 }
-function to_candid_HotelQueryParams_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: HotelQueryParams): _HotelQueryParams {
-    return to_candid_record_n24(_uploadFile, _downloadFile, value);
+function from_candid_vec_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Booking>): Array<Booking> {
+    return value.map((x)=>from_candid_Booking_n12(_uploadFile, _downloadFile, x));
 }
-function to_candid_Status_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): _Status {
-    return to_candid_variant_n26(_uploadFile, _downloadFile, value);
+function from_candid_vec_n23(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_Hotel>): Array<Hotel> {
+    return value.map((x)=>from_candid_Hotel_n19(_uploadFile, _downloadFile, x));
 }
-function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
-    return to_candid_variant_n2(_uploadFile, _downloadFile, value);
+function from_candid_vec_n25(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_PropertyListing>): Array<PropertyListing> {
+    return value.map((x)=>from_candid_PropertyListing_n26(_uploadFile, _downloadFile, x));
 }
-function to_candid_record_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function to_candid_HotelQueryParams_n30(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: HotelQueryParams): _HotelQueryParams {
+    return to_candid_record_n31(_uploadFile, _downloadFile, value);
+}
+function to_candid_Status_n32(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): _Status {
+    return to_candid_variant_n33(_uploadFile, _downloadFile, value);
+}
+function to_candid_UserRole_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
+    return to_candid_variant_n9(_uploadFile, _downloadFile, value);
+}
+function to_candid__CaffeineStorageRefillInformation_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _CaffeineStorageRefillInformation): __CaffeineStorageRefillInformation {
+    return to_candid_record_n3(_uploadFile, _downloadFile, value);
+}
+function to_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _CaffeineStorageRefillInformation | null): [] | [__CaffeineStorageRefillInformation] {
+    return value === null ? candid_none() : candid_some(to_candid__CaffeineStorageRefillInformation_n2(_uploadFile, _downloadFile, value));
+}
+function to_candid_record_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    proposed_top_up_amount?: bigint;
+}): {
+    proposed_top_up_amount: [] | [bigint];
+} {
+    return {
+        proposed_top_up_amount: value.proposed_top_up_amount ? candid_some(value.proposed_top_up_amount) : candid_none()
+    };
+}
+function to_candid_record_n31(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     city?: string;
     amenities?: Array<string>;
     maxPrice?: bigint;
@@ -1157,22 +1317,7 @@ function to_candid_record_n24(_uploadFile: (file: ExternalBlob) => Promise<Uint8
         minPrice: value.minPrice ? candid_some(value.minPrice) : candid_none()
     };
 }
-function to_candid_variant_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
-    admin: null;
-} | {
-    user: null;
-} | {
-    guest: null;
-} {
-    return value == UserRole.admin ? {
-        admin: null
-    } : value == UserRole.user ? {
-        user: null
-    } : value == UserRole.guest ? {
-        guest: null
-    } : value;
-}
-function to_candid_variant_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): {
+function to_candid_variant_n33(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Status): {
     Confirmed: null;
 } | {
     Cancelled: null;
@@ -1185,6 +1330,21 @@ function to_candid_variant_n26(_uploadFile: (file: ExternalBlob) => Promise<Uint
         Cancelled: null
     } : value == Status.Pending ? {
         Pending: null
+    } : value;
+}
+function to_candid_variant_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+} {
+    return value == UserRole.admin ? {
+        admin: null
+    } : value == UserRole.user ? {
+        user: null
+    } : value == UserRole.guest ? {
+        guest: null
     } : value;
 }
 export interface CreateActorOptions {

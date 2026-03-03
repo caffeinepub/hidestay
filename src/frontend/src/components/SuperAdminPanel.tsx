@@ -1,5 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   InputOTP,
@@ -32,6 +38,7 @@ import {
   CheckCircle,
   CheckCircle2,
   Crown,
+  Eye,
   HelpCircle,
   Hotel,
   Info,
@@ -1340,6 +1347,15 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
 // Subscriptions Tab
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface KycViewerState {
+  open: boolean;
+  listingId: bigint | null;
+  url: string | null;
+  ownerName: string;
+  ownerEmail: string;
+  loading: boolean;
+}
+
 interface SubscriptionsTabProps {
   listings: PropertyListing[];
   isLoading: boolean;
@@ -1348,6 +1364,7 @@ interface SubscriptionsTabProps {
   approvePending: boolean;
   rejectPending: boolean;
   pendingListingId: bigint | null;
+  actor: import("../backend").backendInterface | null;
 }
 
 function SubscriptionsTab({
@@ -1358,9 +1375,50 @@ function SubscriptionsTab({
   approvePending,
   rejectPending,
   pendingListingId,
+  actor,
 }: SubscriptionsTabProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [kycViewer, setKycViewer] = useState<KycViewerState>({
+    open: false,
+    listingId: null,
+    url: null,
+    ownerName: "",
+    ownerEmail: "",
+    loading: false,
+  });
+
+  const handleViewKyc = async (listing: PropertyListing) => {
+    if (!actor || !listing.kycDocumentUrl) return;
+    setKycViewer({
+      open: true,
+      listingId: listing.id,
+      url: null,
+      ownerName: listing.ownerName,
+      ownerEmail: listing.ownerEmail,
+      loading: true,
+    });
+    try {
+      const url = await actor.getKycDocumentUrl(listing.id);
+      setKycViewer((prev) => ({ ...prev, url, loading: false }));
+    } catch (err) {
+      setKycViewer((prev) => ({ ...prev, loading: false }));
+      toast.error(
+        `Failed to load KYC document: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
+    }
+  };
+
+  const handleCloseKycViewer = () => {
+    setKycViewer({
+      open: false,
+      listingId: null,
+      url: null,
+      ownerName: "",
+      ownerEmail: "",
+      loading: false,
+    });
+  };
 
   const filtered = listings.filter((l) => {
     const matchesSearch =
@@ -1384,6 +1442,98 @@ function SubscriptionsTab({
 
   return (
     <div className="space-y-4">
+      {/* KYC Viewer Dialog */}
+      <Dialog
+        open={kycViewer.open}
+        onOpenChange={(v) => !v && handleCloseKycViewer()}
+      >
+        <DialogContent
+          data-ocid="admin.kyc_viewer.dialog"
+          className="max-w-lg w-full p-0 gap-0 rounded-2xl overflow-hidden"
+        >
+          <DialogHeader className="px-6 pt-5 pb-4 bg-gradient-to-r from-teal-700 to-teal-900 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-display font-bold text-white leading-tight">
+                    KYC Document — {kycViewer.ownerName || "Owner"}
+                  </DialogTitle>
+                  {kycViewer.ownerEmail && (
+                    <p className="text-teal-200 text-xs mt-0.5">
+                      {kycViewer.ownerEmail}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                data-ocid="admin.kyc_viewer.close_button"
+                onClick={handleCloseKycViewer}
+                className="text-white/70 hover:text-white transition-colors rounded-full p-1 hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </DialogHeader>
+
+          <div className="p-5">
+            {/* Security notice */}
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-amber-800 text-xs leading-relaxed">
+                <span className="font-semibold">Confidential document.</span>{" "}
+                This KYC document is only visible to administrators and must not
+                be shared externally.
+              </p>
+            </div>
+
+            {/* Image area */}
+            <div className="rounded-xl overflow-hidden border border-border bg-muted/30 min-h-[200px] flex items-center justify-center">
+              {kycViewer.loading ? (
+                <div
+                  data-ocid="admin.kyc_viewer.loading_state"
+                  className="flex flex-col items-center gap-3 py-10"
+                >
+                  <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+                  <p className="text-sm text-muted-foreground">
+                    Loading KYC document…
+                  </p>
+                </div>
+              ) : kycViewer.url ? (
+                <img
+                  src={kycViewer.url}
+                  alt={`KYC document for ${kycViewer.ownerName}`}
+                  className="w-full h-auto max-h-[400px] object-contain"
+                />
+              ) : (
+                <div
+                  data-ocid="admin.kyc_viewer.error_state"
+                  className="flex flex-col items-center gap-2 py-10 text-muted-foreground"
+                >
+                  <XCircle className="w-8 h-8 opacity-40" />
+                  <p className="text-sm">Could not load document</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end mt-4">
+              <Button
+                data-ocid="admin.kyc_viewer.close_button"
+                variant="outline"
+                onClick={handleCloseKycViewer}
+                className="gap-2"
+              >
+                <X className="w-4 h-4" />
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -1473,6 +1623,24 @@ function SubscriptionsTab({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {/* View KYC button — only shown if KYC document exists */}
+                    {listing.kycDocumentUrl ? (
+                      <Button
+                        data-ocid={`admin.subscriptions.view_kyc_button.${idx + 1}`}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewKyc(listing)}
+                        className="text-xs h-7 px-3 gap-1 border-teal-200 text-teal-700 hover:bg-teal-50"
+                      >
+                        <Eye className="w-3 h-3" />
+                        View KYC
+                      </Button>
+                    ) : (
+                      <Badge className="bg-slate-50 text-slate-400 border border-slate-200 text-[10px] gap-1">
+                        No KYC
+                      </Badge>
+                    )}
+
                     {isListingPending && (
                       <>
                         <Button
@@ -2353,6 +2521,7 @@ export function SuperAdminPanel({
                         approvePending={approveListingPending}
                         rejectPending={rejectListingPending}
                         pendingListingId={pendingListingId}
+                        actor={actor}
                       />
                     </TabsContent>
                   </div>

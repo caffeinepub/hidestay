@@ -6,13 +6,19 @@ import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Time "mo:core/Time";
-
+import Iter "mo:core/Iter";
+import Nat "mo:core/Nat";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
+import MixinStorage "blob-storage/Mixin";
+import Storage "blob-storage/Storage";
+import Migration "migration";
 
-
+(with migration = Migration.run)
 actor {
+  include MixinStorage();
+
   type OtpEntry = {
     code : Text;
     expiresAt : Int;
@@ -21,7 +27,6 @@ actor {
   var otpCounter = 0;
   let adminOtps = Map.empty<Principal, OtpEntry>();
 
-  // New for limiting admin login attempts
   let adminLoginAttempts = Map.empty<Principal, Nat>();
   let adminLockedAccounts = Map.empty<Principal, Bool>();
   let MAX_ADMIN_LOGIN_ATTEMPTS : Nat = 5;
@@ -79,9 +84,7 @@ actor {
     #ok : Text;
     #error : Text;
   } {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can register customer profiles");
-    };
+    // No authorization check - guests can register
 
     if (emailToPrincipal.containsKey(email)) {
       return #error("Email already registered");
@@ -113,9 +116,7 @@ actor {
     #ok : Text;
     #error : Text;
   } {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can login");
-    };
+    // No authorization check - guests can login
 
     switch (emailToPrincipal.get(email)) {
       case (null) { #error("Invalid credentials") };
@@ -316,6 +317,8 @@ actor {
     status : PropertyListingStatus;
     submittedAt : Int;
     submittedBy : Principal;
+    imageUrls : [Text];
+    kycDocumentUrl : Text;
   };
 
   public type PropertyListingStatus = {
@@ -617,6 +620,8 @@ actor {
     description : Text,
     subscriptionPlan : Text,
     submittedAt : Int,
+    imageUrls : [Text],
+    kycDocumentUrl : Text,
   ) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Must be logged in to submit listings");
@@ -639,25 +644,13 @@ actor {
       status = #PendingApproval;
       submittedAt = submittedAt;
       submittedBy = caller;
+      imageUrls = imageUrls;
+      kycDocumentUrl = kycDocumentUrl;
     };
 
     propertyListings.add(newId, listing);
     nextPropertyListingId += 1;
     newId;
-  };
-
-  public query ({ caller }) func getPropertyListings() : async [PropertyListing] {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admin can see all listings");
-    };
-    propertyListings.values().toArray();
-  };
-
-  public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view their listings");
-    };
-    propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
   public shared ({ caller }) func approvePropertyListing(listingId : Nat) : async () {
@@ -714,6 +707,8 @@ actor {
           status = #Approved;
           submittedAt = listing.submittedAt;
           submittedBy = listing.submittedBy;
+          imageUrls = listing.imageUrls;
+          kycDocumentUrl = listing.kycDocumentUrl;
         };
         propertyListings.add(listingId, updatedListing);
       };
@@ -744,10 +739,37 @@ actor {
           status = #Rejected;
           submittedAt = listing.submittedAt;
           submittedBy = listing.submittedBy;
+          imageUrls = listing.imageUrls;
+          kycDocumentUrl = listing.kycDocumentUrl;
         };
         propertyListings.add(id, updated);
       };
     };
+  };
+
+  public query ({ caller }) func getKycDocumentUrl(listingId : Nat) : async Text {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only super admin can view KYC documents");
+    };
+
+    switch (propertyListings.get(listingId)) {
+      case (null) { Runtime.trap("Listing not found") };
+      case (?listing) { listing.kycDocumentUrl };
+    };
+  };
+
+  public query ({ caller }) func getPropertyListings() : async [PropertyListing] {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admin can see all listings");
+    };
+    propertyListings.values().toArray();
+  };
+
+  public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view their listings");
+    };
+    propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
   public query ({ caller }) func getAllBookings() : async [Booking] {
@@ -955,7 +977,7 @@ actor {
       case (?hotelId) {
         let availableRooms = switch (roomInventory.get(hotelId)) {
           case (null) { totalRooms };
-          case (?inv) { Int.min(inv.availableRooms, totalRooms).toNat() };
+          case (?inv) { Nat.min(inv.availableRooms, totalRooms) };
         };
         let inventory : RoomInventory = {
           hotelId;
@@ -1070,11 +1092,6 @@ actor {
     #ok : Text;
     #error : Text;
   } {
-    // Note: This function should NOT require admin permission check
-    // because it's part of the authentication flow itself.
-    // The OTP verification is the authentication mechanism.
-    // However, we need to verify that an OTP was generated for this principal.
-
     switch (adminLockedAccounts.get(caller)) {
       case (?true) {
         return #error("Account locked. Too many failed attempts. Contact another super admin to unlock.");
@@ -1084,7 +1101,6 @@ actor {
 
     switch (adminOtps.get(caller)) {
       case (null) {
-        // No OTP exists for this caller - they may not be an admin or haven't generated OTP
         adminLoginAttempts.add(caller, 1);
         #error("Invalid OTP. 4 attempts remaining.");
       };

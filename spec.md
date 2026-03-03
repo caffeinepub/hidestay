@@ -1,30 +1,48 @@
-# HIDESTAY
+# HIDESTAY — KYC Document Upload for List Your Property
 
 ## Current State
-The Super Admin Panel uses Internet Identity login + a 6-digit OTP gate. `generateAdminOtp` creates an OTP keyed by caller principal, and `verifyAdminOtp` validates it. There is no limit on failed OTP attempts — a bad actor can guess indefinitely.
+
+- "List Your Property" form (`ListPropertyModal` in `App.tsx`) allows hotel image upload (up to 5 JPG/PNG, 2MB each) via blob storage
+- `PropertyListing` type in `main.mo` has `imageUrls: [Text]` field
+- `submitPropertyListing` backend function accepts `imageUrls` parameter
+- Blob storage (`MixinStorage`) is already integrated for hotel image uploads
+- Super Admin Panel (`SuperAdminPanel.tsx`) shows property listings in the Subscriptions tab with approve/reject actions
 
 ## Requested Changes (Diff)
 
 ### Add
-- `adminLoginAttempts` map: `Principal → Nat` tracking consecutive failed OTP verifications per admin
-- `adminLockedAccounts` map: `Principal → Bool` — set to true after 5 consecutive failures
-- `verifyAdminOtp` increments failure count on wrong code; locks account at 5 failures; resets count on success
-- `getAdminLockStatus` query: returns `{ locked: Bool; failedAttempts: Nat }` for the caller
-- `unlockAdminAccount(target: Principal)` — admin-callable (for recovery by another trusted principal); for now the super-admin cannot unlock themselves
-- Frontend: OTP gate reads `getAdminLockStatus` on mount; if locked shows a "Account Locked" error screen with a clear message; if unlocked, proceeds with normal OTP flow
+- KYC document upload field in "List Your Property" form, positioned after the Hotel Images section
+- KYC upload accepts only JPG and PNG files, max 2MB, single file
+- Preview of KYC document before submission (thumbnail)
+- KYC document URL stored as a separate field in `PropertyListing` backend type
+- `kycDocumentUrl: Text` field added to `PropertyListing` type in Motoko
+- `submitPropertyListing` Motoko function updated to accept `kycDocumentUrl: Text` parameter
+- KYC file uploaded to blob storage with a distinct path prefix (e.g., `kyc/`) to distinguish from hotel images
+- A new admin-only query `getKycDocumentUrl(listingId: Nat)` that returns the KYC URL only to super_admin callers — KYC files never exposed to public or non-admin users
+- In the Super Admin Panel Subscriptions tab: display a "View KYC" button per listing that fetches and shows the KYC document image in a secure preview dialog (admin-only, server-gated)
 
 ### Modify
-- `verifyAdminOtp` — wrap existing logic to check lock first, increment/reset counters
-- SuperAdminPanel OTP gate — add lock-status check and locked UI state
-- Error messages in frontend OTP gate to show remaining attempts (e.g. "2 attempts remaining before lockout")
+- `PropertyListing` type: add `kycDocumentUrl: Text` field (empty string if not uploaded)
+- `submitPropertyListing`: add `kycDocumentUrl` parameter
+- `approvePropertyListing` and `rejectPropertyListing` functions: propagate `kycDocumentUrl` in the updated listing record
+- `ListPropertyModal` (App.tsx): add KYC upload section below Hotel Images section
+  - Single file input (not multiple), JPG/PNG only, 2MB limit
+  - Preview thumbnail before submission
+  - Upload to blob storage on submit (same StorageClient pattern used for hotel images)
+  - Pass `kycDocumentUrl` to `submitPropertyListing`
+- Super Admin Panel Subscriptions tab: add "View KYC" button that calls `getKycDocumentUrl` and shows the image in a modal dialog
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Add `adminLoginAttempts` and `adminLockedAccounts` state maps in main.mo
-2. Add `getAdminLockStatus` query returning `{ locked: Bool; failedAttempts: Nat }`
-3. Modify `verifyAdminOtp` to: check locked → reject immediately; on wrong code increment counter and lock at 5; on correct code reset counter
-4. Add `unlockAdminAccount(target: Principal)` admin-only function
-5. Update frontend SuperAdminPanel OTP gate to: (a) query lock status on mount, (b) show locked screen if locked, (c) show remaining attempts in error messages
-6. Validate TypeScript build
+
+1. Update `PropertyListing` Motoko type to include `kycDocumentUrl: Text`
+2. Update `submitPropertyListing` to accept and store `kycDocumentUrl`
+3. Update `approvePropertyListing` and `rejectPropertyListing` to propagate `kycDocumentUrl`
+4. Add `getKycDocumentUrl(listingId: Nat)` admin-only query returning `Text`
+5. Regenerate backend to update `backend.d.ts` bindings
+6. In `ListPropertyModal` (App.tsx): add KYC upload state, file input, preview, and upload logic mirroring hotel image pattern (single file, distinct variable)
+7. Pass `kycDocumentUrl` string to `submitPropertyListing` call
+8. In `SuperAdminPanel.tsx` Subscriptions tab: add "View KYC" button per listing, call `getKycDocumentUrl`, show image in a dialog
+9. Validate and build cleanly
