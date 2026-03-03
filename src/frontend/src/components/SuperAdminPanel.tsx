@@ -34,6 +34,8 @@ import {
   Loader2,
   Lock,
   MapPin,
+  Moon,
+  Phone,
   RefreshCw,
   Search,
   Settings,
@@ -75,6 +77,15 @@ interface SuperAdminPanelProps {
 
 type AdminTab = "dashboard" | "hotels" | "bookings" | "users" | "subscriptions";
 
+// Enriched booking type — joins Booking with Hotel data on the frontend
+interface EnrichedBooking extends Booking {
+  hotelName: string;
+  hotelCity: string;
+  totalAmount: bigint;
+  paymentMode: string;
+  nights: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +112,37 @@ function formatDate(ts: bigint | string): string {
 
 function formatPrice(price: bigint): string {
   return new Intl.NumberFormat("en-IN").format(Number(price));
+}
+
+function computeNights(checkIn: string, checkOut: string): number {
+  try {
+    const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime();
+    return Math.max(1, Math.round(ms / 86_400_000));
+  } catch {
+    return 1;
+  }
+}
+
+function enrichBookings(
+  bookings: Booking[],
+  hotels: HotelType[],
+): EnrichedBooking[] {
+  const hotelMap = new Map(hotels.map((h) => [h.id.toString(), h]));
+  return bookings
+    .map((b) => {
+      const hotel = hotelMap.get(b.hotelId.toString());
+      const nights = computeNights(b.checkIn, b.checkOut);
+      const totalAmount = hotel ? hotel.pricePerNight * BigInt(nights) : 0n;
+      return {
+        ...b,
+        hotelName: hotel?.name ?? `Hotel #${b.hotelId.toString()}`,
+        hotelCity: hotel?.city ?? "Unknown",
+        totalAmount,
+        paymentMode: "Pay at Hotel",
+        nights,
+      };
+    })
+    .sort((a, b) => Number(b.created - a.created));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -746,33 +788,44 @@ function HotelsTab({
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface BookingsTabProps {
-  bookings: Booking[];
+  bookings: EnrichedBooking[];
   isLoading: boolean;
 }
 
 function BookingsTab({ bookings, isLoading }: BookingsTabProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [cityFilter, setCityFilter] = useState<string>("all");
+
+  // Deduplicated, sorted city list derived from enriched bookings
+  const cityOptions = Array.from(
+    new Set(bookings.map((b) => b.hotelCity).filter(Boolean)),
+  ).sort();
 
   const filtered = bookings.filter((b) => {
+    const q = search.toLowerCase();
     const matchesSearch =
-      b.guestName.toLowerCase().includes(search.toLowerCase()) ||
-      b.guestEmail.toLowerCase().includes(search.toLowerCase()) ||
-      b.phone.includes(search);
+      !search ||
+      b.guestName.toLowerCase().includes(q) ||
+      b.guestEmail.toLowerCase().includes(q) ||
+      b.phone.includes(q);
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "confirmed" && b.status === Status.Confirmed) ||
       (statusFilter === "pending" && b.status === Status.Pending) ||
       (statusFilter === "cancelled" && b.status === Status.Cancelled);
-    return matchesSearch && matchesStatus;
+    const matchesCity = cityFilter === "all" || b.hotelCity === cityFilter;
+    return matchesSearch && matchesStatus && matchesCity;
   });
 
-  const sorted = [...filtered].sort((a, b) => Number(b.created - a.created));
+  // Already sorted by created desc from enrichBookings(), just preserve order
+  const sorted = filtered;
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Filters row */}
       <div className="flex flex-col sm:flex-row gap-3">
+        {/* Text search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -783,6 +836,26 @@ function BookingsTab({ bookings, isLoading }: BookingsTabProps) {
             className="pl-9"
           />
         </div>
+
+        {/* City filter */}
+        <Select value={cityFilter} onValueChange={setCityFilter}>
+          <SelectTrigger
+            data-ocid="super_admin.bookings.city_select"
+            className="w-full sm:w-44"
+          >
+            <SelectValue placeholder="Filter by city" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Cities</SelectItem>
+            {cityOptions.map((city) => (
+              <SelectItem key={city} value={city}>
+                {city}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Status filter */}
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger
             data-ocid="super_admin.bookings.status_select"
@@ -804,59 +877,147 @@ function BookingsTab({ bookings, isLoading }: BookingsTabProps) {
         Showing {sorted.length} of {bookings.length} bookings
       </p>
 
-      {/* List */}
+      {/* Skeleton state */}
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {["b1", "b2", "b3", "b4", "b5", "b6"].map((k) => (
-            <SkeletonRow key={k} />
+            <div
+              key={k}
+              className="p-4 rounded-xl border border-border space-y-3"
+            >
+              <div className="flex justify-between">
+                <div className="skeleton-shimmer h-4 w-32 rounded" />
+                <div className="skeleton-shimmer h-6 w-20 rounded-full" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="skeleton-shimmer h-12 rounded-lg" />
+                <div className="skeleton-shimmer h-12 rounded-lg" />
+              </div>
+              <div className="skeleton-shimmer h-8 rounded-lg" />
+              <div className="flex justify-between">
+                <div className="skeleton-shimmer h-5 w-24 rounded" />
+                <div className="skeleton-shimmer h-6 w-28 rounded-full" />
+              </div>
+            </div>
           ))}
         </div>
       ) : sorted.length === 0 ? (
         <div
           data-ocid="super_admin.bookings.empty_state"
-          className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-xl"
+          className="text-center py-14 text-muted-foreground border border-dashed border-border rounded-xl"
         >
-          <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">No bookings match your search</p>
+          <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">No bookings match your filters</p>
+          <p className="text-xs mt-1 opacity-70">
+            Try adjusting the search or filter criteria
+          </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {sorted.map((booking, idx) => (
-            <div
+            <motion.div
               key={booking.id.toString()}
               data-ocid={`super_admin.bookings.item.${idx + 1}`}
-              className="p-4 rounded-xl border border-border bg-card hover:bg-accent/20 transition-colors"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(idx * 0.03, 0.3) }}
+              className="rounded-xl border border-border bg-card hover:bg-accent/10 transition-colors overflow-hidden"
             >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-purple-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm text-foreground">
-                      {booking.guestName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {booking.guestEmail} · {booking.phone}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Hotel #{booking.hotelId.toString()} · {booking.checkIn} →{" "}
-                      {booking.checkOut} · {booking.guestCount.toString()}{" "}
-                      guest(s)
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap shrink-0">
-                  <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
-                    #{booking.id.toString()}
+              {/* Card header: Booking ID | Date | Status */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border/60">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[11px] font-mono font-bold bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded">
+                    Booking #{booking.id.toString()}
                   </span>
-                  <BookingStatusBadge status={booking.status} />
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(booking.created)}
+                  </span>
+                </div>
+                <BookingStatusBadge status={booking.status} />
+              </div>
+
+              {/* Card body */}
+              <div className="p-4 space-y-3">
+                {/* Two-column: Guest info + Hotel info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Guest info */}
+                  <div className="flex items-start gap-2.5 rounded-lg bg-blue-50/50 border border-blue-100/60 p-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <User className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">
+                        {booking.guestName}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        {booking.guestEmail}
+                      </p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground">
+                          {booking.phone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hotel info */}
+                  <div className="flex items-start gap-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100/60 p-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+                      <Hotel className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">
+                        {booking.hotelName}
+                      </p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground">
+                          {booking.hotelCity}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stay dates row */}
+                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50/60 border border-slate-100 px-3 py-2">
+                  <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium text-foreground">
+                    {booking.checkIn}
+                  </span>
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <span className="text-xs font-medium text-foreground">
+                    {booking.checkOut}
+                  </span>
+                  <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-medium">
+                      {booking.nights} night{booking.nights !== 1 ? "s" : ""}
+                    </span>
+                    <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-medium">
+                      {booking.guestCount.toString()} guest
+                      {Number(booking.guestCount) !== 1 ? "s" : ""}
+                    </span>
+                  </span>
+                </div>
+
+                {/* Footer: Total amount + Payment mode */}
+                <div className="flex items-center justify-between pt-1">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">
+                      Total Amount
+                    </p>
+                    <p className="text-lg font-bold text-foreground font-display leading-none">
+                      ₹{formatPrice(booking.totalAmount)}
+                    </p>
+                  </div>
+                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-xs gap-1">
+                    <Wallet className="w-3 h-3" />
+                    {booking.paymentMode}
+                  </Badge>
                 </div>
               </div>
-              <div className="mt-2 pl-12 text-xs text-muted-foreground">
-                Submitted: {formatDate(booking.created)}
-              </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       )}
@@ -989,11 +1150,18 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
 
         <div className="rounded-xl border border-border bg-amber-50/30 p-4 flex gap-2">
           <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800 leading-relaxed">
-            To assign admin privileges, enter the user's Internet Identity
-            principal ID. Admins gain full access to this Super Admin Panel.
-            This action is irreversible without explicit revocation.
-          </p>
+          <div className="text-xs text-amber-800 leading-relaxed space-y-1">
+            <p>
+              To assign admin privileges, enter the user's Internet Identity
+              principal ID. Admins gain full access to this Super Admin Panel.
+              This action is irreversible without explicit revocation.
+            </p>
+            <p className="font-semibold">
+              ⚡ Assigning the "Super Admin" role grants full access to this
+              panel, including hotel management, bookings, and user role
+              assignment.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -1027,7 +1195,7 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
                 <SelectItem value={UserRole.admin}>
                   <div className="flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 text-red-600" />
-                    <span>Admin</span>
+                    <span>Super Admin</span>
                   </div>
                 </SelectItem>
                 <SelectItem value={UserRole.user}>
@@ -1457,6 +1625,9 @@ export function SuperAdminPanel({
   const { identity } = useInternetIdentity();
   const currentPrincipal: string = identity?.getPrincipal().toString() ?? "";
 
+  // ── Enrich bookings with hotel data ──────────────────────────────────────
+  const enrichedBookings: EnrichedBooking[] = enrichBookings(bookings, hotels);
+
   // ── Tab badge counts ──────────────────────────────────────────────────────
   const pendingHotelsCount = hotels.filter(
     (h) => h.approvalStatus === HotelApprovalStatus.Pending,
@@ -1496,7 +1667,7 @@ export function SuperAdminPanel({
                   Super Admin Panel
                 </h1>
                 <p className="text-white/50 text-xs font-medium tracking-widest uppercase mt-0.5">
-                  HIDESTAY · Secure Access
+                  HIDESTAY · Super Admin · Secure Access
                 </p>
               </div>
             </div>
@@ -1607,7 +1778,7 @@ export function SuperAdminPanel({
 
                     <TabsContent value="bookings" className="mt-0">
                       <BookingsTab
-                        bookings={bookings}
+                        bookings={enrichedBookings}
                         isLoading={bookingsLoading}
                       />
                     </TabsContent>

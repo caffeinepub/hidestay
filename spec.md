@@ -1,61 +1,50 @@
-# HIDESTAY Super Admin Panel
+# HIDESTAY
 
 ## Current State
 
-The app is a hotel booking platform for Uttarakhand with:
-- 25 seeded hotels across Haridwar, Rishikesh, Mussoorie, Dhanaulti, Dehradun
-- Authorization system with `#admin` and `#user` roles
-- An existing AdminPanel component (full-screen overlay, opened via header button) that handles: hotel approval/rejection, property listing approval, all bookings view, assign hotel owner
-- Hotel approval statuses: `#Approved`, `#Pending`, `#Rejected`
-- The existing `isAdmin` check uses `AccessControl.isAdmin()` which checks for the `#admin` role
-- No `super_admin` role exists — only `#admin` and `#user`
-- No `/admin` route — admin panel is a React state overlay
-- No hotel suspension, user management, or subscription tracking in the backend
-- No dashboard overview with aggregate stats
+- Super Admin Panel has a Bookings tab that calls `getAllBookings()` which returns raw `Booking[]`
+- `Booking` type has: id, hotelId, guestName, guestEmail, phone, checkIn, checkOut, guestCount, status, created, owner
+- The BookingsTab currently shows: guest name, email, phone, Hotel #ID (not name), check-in/out, guest count, booking ID, status badge
+- Missing fields: hotel name, hotel city, total amount, payment mode, booking date formatted, city filter
+- The backend has no enriched booking view — hotel info requires a separate lookup
+- `getAllBookings()` returns bookings unsorted (frontend sorts by `created` desc)
 
 ## Requested Changes (Diff)
 
 ### Add
-- New `#super_admin` role in the authorization system (separate from `#admin`, higher privilege)
-- Backend APIs:
-  - `isSuperAdmin()` — returns bool for caller
-  - `getSuperAdminStats()` — returns aggregate counts: totalHotels, approvedHotels, pendingHotels, suspendedHotels, totalBookings, confirmedBookings, cancelledBookings, totalListings, pendingListings, totalUsers
-  - `suspendHotel(id)` — marks hotel as suspended (new status `#Suspended`), removes from search results
-  - `unsuspendHotel(id)` — restores hotel to `#Approved` status
-  - `getAllUsers()` — returns list of all registered principals with their roles
-  - `assignSuperAdmin(principal)` — allows existing super_admin to promote another user (or use token-based bootstrap)
-  - `getSubscriptionStats()` — returns breakdown of subscription plans from property listings
-- New `HotelApprovalStatus` variant: `#Suspended`
-- Frontend `/admin` route rendered by React Router (or hash-based routing) accessible only to `super_admin` role
-- Super Admin Panel page at `/admin` with 5 tabs:
-  1. **Dashboard** — stat cards (total hotels, pending approvals, suspended hotels, total bookings, confirmed bookings, total users), recent activity list
-  2. **Hotels** — full hotel table with search/filter by city/status, Approve/Reject/Suspend/Unsuspend actions per row
-  3. **Bookings** — all bookings table with search by guest email/name, status filter, booking details
-  4. **Users** — list of all registered users with their roles and principal IDs
-  5. **Subscriptions** — property listings with subscription plan info, status badges, owner contact details
+- New `AdminBookingView` type in Motoko: all Booking fields + hotelName, hotelCity, totalAmount (pricePerNight * nights), paymentMode (hardcoded "Pay at Hotel")
+- New `getAdminBookings()` backend endpoint that returns `[AdminBookingView]` sorted by created desc, joining hotel data for each booking
+- City filter dropdown in BookingsTab (derived from unique cities in loaded bookings)
+- Status filter (already exists, keep)
+- Total amount column computed from hotel pricePerNight and number of nights between checkIn and checkOut
+- Display hotel name and city per booking row
+- Display number of guests
+- Display total amount with ₹ formatting
+- Display payment mode badge ("Pay at Hotel")
+- Display booking ID and booking date
 
 ### Modify
-- `searchHotels` — filter out `#Suspended` hotels (in addition to non-approved)
-- `getHotelsForAdmin` — return suspended hotels too (admin sees all)
-- Hotel type: add `#Suspended` to `HotelApprovalStatus` variant
-- Header: add "Super Admin" button visible only when `isSuperAdmin` is true (separate from existing `isAdmin` Admin Panel button)
-- The existing AdminPanel overlay remains unchanged for `#admin` role users; the new `/admin` route is for `super_admin` only
+- BookingsTab: replace Hotel #ID display with hotel name + city
+- BookingsTab: add total amount, payment mode, booking date fields to each card
+- BookingsTab: add city filter dropdown
+- BookingsTab: ensure data comes from `getAdminBookings()` (new enriched endpoint) instead of `getAllBookings()`
+- backend.d.ts: add `AdminBookingView` interface and `getAdminBookings()` method
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
 
-1. **Backend**: Add `#super_admin` role to access-control, add `isSuperAdmin()` and `assignSuperAdmin()` functions, add `#Suspended` to `HotelApprovalStatus`, add `suspendHotel` / `unsuspendHotel`, add `getSuperAdminStats()`, add `getAllUsers()`, add `getSubscriptionStats()`. Update `searchHotels` to exclude suspended hotels.
-
-2. **Frontend**: 
-   - Add React Router (already likely available) or hash-based routing to handle `/admin` path
-   - Create `SuperAdminPanel.tsx` component with 5-tab layout (Dashboard, Hotels, Bookings, Users, Subscriptions)
-   - Dashboard tab: stat cards grid with icons + totals, recent booking/listing activity
-   - Hotels tab: searchable/filterable table with Approve/Reject/Suspend/Unsuspend actions; city and status dropdowns
-   - Bookings tab: table with guest info, hotel ID, dates, status; email search filter; status filter
-   - Users tab: table of principal IDs + roles + action to assign/change role
-   - Subscriptions tab: property listings grouped by plan (Basic/Standard/Premium) with owner details and listing status
-   - Add `isSuperAdmin` query in App.tsx; show "Super Admin" button in header when true
-   - Route `/admin` renders `SuperAdminPanel` if super_admin, otherwise redirects to access-denied screen
-   - All admin mutations wrapped in error toasts
+1. Add `AdminBookingView` type to `main.mo` with hotelName, hotelCity, totalAmount (Int), paymentMode (Text)
+2. Add `getAdminBookings()` query function to `main.mo` — admin-only, joins hotel data, computes totalAmount from nights * pricePerNight, sorts by created desc
+3. Update `backend.d.ts` to add `AdminBookingView` interface and `getAdminBookings()` method signature
+4. Update `SuperAdminPanel.tsx` BookingsTab:
+   - Change data type from `Booking[]` to `AdminBookingView[]`
+   - Replace `hotelId` display with `hotelName` + `hotelCity`
+   - Add total amount display
+   - Add "Pay at Hotel" payment mode badge
+   - Add city filter dropdown (unique cities from loaded bookings)
+   - Keep status filter
+   - Add booking date formatted display
+   - Ensure sorted latest first (backend handles this, frontend preserves order)
+5. Update main SuperAdminPanel query to use `getAdminBookings()` instead of `getAllBookings()`

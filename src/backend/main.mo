@@ -512,10 +512,12 @@ actor {
     cityMatch and minPriceMatch and maxPriceMatch and amenitiesMatch;
   };
 
+  // Public query - no authentication required
   public query func searchHotels(queryParams : HotelQueryParams) : async [Hotel] {
     hotels.values().toArray().filter(func(h) { matchesQuery(h, queryParams) });
   };
 
+  // Public query - no authentication required
   public query func getHotel(id : Nat) : async Hotel {
     switch (hotels.get(id)) {
       case (null) { Runtime.trap("Hotel not found") };
@@ -523,6 +525,7 @@ actor {
     };
   };
 
+  // Admin only
   public query ({ caller }) func getHotelsForAdmin() : async [Hotel] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can view all hotels");
@@ -530,6 +533,7 @@ actor {
     hotels.values().toArray();
   };
 
+  // Admin only
   public shared ({ caller }) func approveHotel(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can approve hotels");
@@ -555,6 +559,7 @@ actor {
     };
   };
 
+  // Admin only
   public shared ({ caller }) func rejectHotel(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can reject hotels");
@@ -580,6 +585,33 @@ actor {
     };
   };
 
+  // Admin only - suspends hotel by setting status to Rejected
+  public shared ({ caller }) func suspendHotel(id : Nat) : async () {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Runtime.trap("Unauthorized: Only admin can suspend hotels");
+    };
+
+    switch (hotels.get(id)) {
+      case (null) { Runtime.trap("Hotel not found") };
+      case (?hotel) {
+        let updatedHotel : Hotel = {
+          id = hotel.id;
+          name = hotel.name;
+          city = hotel.city;
+          description = hotel.description;
+          starRating = hotel.starRating;
+          pricePerNight = hotel.pricePerNight;
+          amenities = hotel.amenities;
+          address = hotel.address;
+          imageIndex = hotel.imageIndex;
+          approvalStatus = #Rejected;
+        };
+        hotels.add(id, updatedHotel);
+      };
+    };
+  };
+
+  // User only
   public shared ({ caller }) func createBooking(
     hotelId : Nat,
     guestName : Text,
@@ -639,6 +671,7 @@ actor {
     newId;
   };
 
+  // Admin only
   public query ({ caller }) func getBookingsByEmail(email : Text) : async [Booking] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admins can get bookings by email");
@@ -647,6 +680,7 @@ actor {
     bookings.values().toArray().filter(func(b) { b.guestEmail == email });
   };
 
+  // User only (own bookings or admin)
   public query ({ caller }) func getBooking(id : Nat) : async Booking {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view bookings");
@@ -663,6 +697,7 @@ actor {
     };
   };
 
+  // User only (own bookings or admin)
   public shared ({ caller }) func cancelBooking(id : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can cancel bookings");
@@ -706,6 +741,7 @@ actor {
     };
   };
 
+  // User only
   public shared ({ caller }) func submitPropertyListing(
     ownerName : Text,
     ownerPhone : Text,
@@ -748,6 +784,7 @@ actor {
     newId;
   };
 
+  // Admin only
   public query ({ caller }) func getPropertyListings() : async [PropertyListing] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can see all listings");
@@ -755,6 +792,7 @@ actor {
     propertyListings.values().toArray();
   };
 
+  // User only (own listings)
   public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view their listings");
@@ -762,6 +800,7 @@ actor {
     propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
+  // Admin only
   public shared ({ caller }) func approvePropertyListing(listingId : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can approve listings");
@@ -822,6 +861,7 @@ actor {
     };
   };
 
+  // Admin only
   public shared ({ caller }) func rejectPropertyListing(id : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can reject listings");
@@ -852,6 +892,7 @@ actor {
     };
   };
 
+  // Admin only
   public query ({ caller }) func getAllBookings() : async [Booking] {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admins can access all bookings");
@@ -859,6 +900,7 @@ actor {
     bookings.values().toArray();
   };
 
+  // User only (own bookings)
   public query ({ caller }) func getMyBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view bookings.");
@@ -869,6 +911,7 @@ actor {
     );
   };
 
+  // Admin only
   public shared ({ caller }) func assignHotelOwner(hotelId : Nat, ownerPrincipal : Principal) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can assign hotel owners");
@@ -881,6 +924,7 @@ actor {
     };
   };
 
+  // Admin only
   public shared ({ caller }) func revokeHotelOwner(hotelId : Nat) : async () {
     if (not (AccessControl.isAdmin(accessControlState, caller))) {
       Runtime.trap("Unauthorized: Only admin can revoke hotel owners");
@@ -895,6 +939,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public query ({ caller }) func getOwnerHotel() : async Hotel {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -915,6 +960,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public query ({ caller }) func getOwnerBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -934,6 +980,7 @@ actor {
     };
   };
 
+  // Hotel owner only (for their hotel's bookings)
   public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1014,6 +1061,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public query ({ caller }) func getOwnerRoomInventory() : async RoomInventory {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1034,6 +1082,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public shared ({ caller }) func updateRoomInventory(roomType : Text, totalRooms : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1061,6 +1110,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public query ({ caller }) func getBlockedDates() : async [BlockedDate] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1081,6 +1131,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public shared ({ caller }) func blockDate(date : Text, reason : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -1105,6 +1156,7 @@ actor {
     };
   };
 
+  // Hotel owner only
   public shared ({ caller }) func unblockDate(blockedDateId : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");

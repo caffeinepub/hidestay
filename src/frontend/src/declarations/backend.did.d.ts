@@ -137,6 +137,7 @@ export interface _SERVICE {
     ],
     bigint
   >,
+  'suspendHotel' : ActorMethod<[bigint], undefined>,
   'unblockDate' : ActorMethod<[bigint], undefined>,
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
   'updateRoomInventory' : ActorMethod<[string, bigint], undefined>,

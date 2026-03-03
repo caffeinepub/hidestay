@@ -122,6 +122,7 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
     submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
+    suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;

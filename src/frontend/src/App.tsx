@@ -64,7 +64,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Booking, Hotel, PropertyListing } from "./backend.d";
 import {
@@ -3572,9 +3572,30 @@ export default function App() {
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
-  const [superAdminOpen, setSuperAdminOpen] = useState(false);
+  const [superAdminOpen, setSuperAdminOpen] = useState(
+    () => window.location.pathname === "/admin",
+  );
   const [myBookingsPanelOpen, setMyBookingsPanelOpen] = useState(false);
   const [ownerDashboardOpen, setOwnerDashboardOpen] = useState(false);
+
+  // ── URL-based /admin routing (no router library) ──────────────────────────
+  useEffect(() => {
+    const handlePopState = () => {
+      setSuperAdminOpen(window.location.pathname === "/admin");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const openAdminPanel = useCallback(() => {
+    history.pushState({}, "", "/admin");
+    setSuperAdminOpen(true);
+  }, []);
+
+  const closeAdminPanel = useCallback(() => {
+    history.pushState({}, "", "/");
+    setSuperAdminOpen(false);
+  }, []);
 
   // ── Auth check
   const { identity } = useInternetIdentity();
@@ -3690,7 +3711,7 @@ export default function App() {
       <Header
         onLoginClick={() => setLoginModalOpen(true)}
         onListPropertyClick={() => setListPropertyModalOpen(true)}
-        onAdminClick={() => setSuperAdminOpen(true)}
+        onAdminClick={openAdminPanel}
         onMyBookingsClick={() => setMyBookingsPanelOpen(true)}
         onOwnerDashboardClick={() => setOwnerDashboardOpen(true)}
         onLogoClick={handleBackFromDetail}
@@ -3917,10 +3938,10 @@ export default function App() {
         actor={actor}
       />
 
-      {/* Super Admin Panel (replaces old AdminPanel) */}
+      {/* Super Admin Panel — accessible at /admin */}
       <SuperAdminPanel
         open={superAdminOpen}
-        onClose={() => setSuperAdminOpen(false)}
+        onClose={closeAdminPanel}
         actor={actor}
         isAdmin={isAdmin}
       />

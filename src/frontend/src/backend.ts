@@ -205,6 +205,7 @@ export interface backendInterface {
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
     submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint): Promise<bigint>;
+    suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;
@@ -629,6 +630,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+            return result;
+        }
+    }
+    async suspendHotel(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.suspendHotel(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.suspendHotel(arg0);
             return result;
         }
     }
