@@ -12,9 +12,9 @@ import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
+import Migration "migration";
 
-
-
+(with migration = Migration.run)
 actor {
   include MixinStorage();
 
@@ -39,6 +39,8 @@ actor {
     rules : Text;
     ownerEmail : Text;
     ownerPrincipal : Text;
+    checkInTime : Text;
+    checkOutTime : Text;
   };
 
   let hotels = Map.empty<Nat, Hotel>();
@@ -145,6 +147,8 @@ actor {
     imageUrls : [Text];
     kycDocumentUrl : Text;
     rules : Text;
+    checkInTime : Text;
+    checkOutTime : Text;
   };
 
   public type PropertyListingStatus = {
@@ -234,6 +238,8 @@ actor {
     imageIndex : Nat,
     imageUrls : [Text],
     rules : Text,
+    checkInTime : Text,
+    checkOutTime : Text,
   ) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can add hotels directly");
@@ -255,6 +261,8 @@ actor {
       rules;
       ownerEmail = "";
       ownerPrincipal = "";
+      checkInTime;
+      checkOutTime;
     };
     hotels.add(hotelId, newHotel);
 
@@ -321,6 +329,8 @@ actor {
           rules = hotel.rules;
           ownerEmail = hotel.ownerEmail;
           ownerPrincipal = hotel.ownerPrincipal;
+          checkInTime = hotel.checkInTime;
+          checkOutTime = hotel.checkOutTime;
         };
         hotels.add(id, updatedHotel);
       };
@@ -350,6 +360,8 @@ actor {
           rules = hotel.rules;
           ownerEmail = hotel.ownerEmail;
           ownerPrincipal = hotel.ownerPrincipal;
+          checkInTime = hotel.checkInTime;
+          checkOutTime = hotel.checkOutTime;
         };
         hotels.add(id, updatedHotel);
       };
@@ -379,6 +391,8 @@ actor {
           rules = hotel.rules;
           ownerEmail = hotel.ownerEmail;
           ownerPrincipal = hotel.ownerPrincipal;
+          checkInTime = hotel.checkInTime;
+          checkOutTime = hotel.checkOutTime;
         };
         hotels.add(id, updatedHotel);
       };
@@ -427,6 +441,8 @@ actor {
           rules = listing.rules;
           ownerEmail = listing.ownerEmail;
           ownerPrincipal = listing.submittedBy.toText();
+          checkInTime = listing.checkInTime;
+          checkOutTime = listing.checkOutTime;
         };
         hotels.add(hotelId, newHotel);
         nextHotelId += 1;
@@ -460,6 +476,8 @@ actor {
           imageUrls = listing.imageUrls;
           kycDocumentUrl = listing.kycDocumentUrl;
           rules = listing.rules;
+          checkInTime = listing.checkInTime;
+          checkOutTime = listing.checkOutTime;
         };
         propertyListings.add(listingId, updatedListing);
       };
@@ -493,6 +511,8 @@ actor {
           imageUrls = listing.imageUrls;
           kycDocumentUrl = listing.kycDocumentUrl;
           rules = listing.rules;
+          checkInTime = listing.checkInTime;
+          checkOutTime = listing.checkOutTime;
         };
         propertyListings.add(listingId, updatedListing);
       };
@@ -759,6 +779,8 @@ actor {
     imageUrls : [Text],
     kycDocumentUrl : Text,
     rules : Text,
+    checkInTime : Text,
+    checkOutTime : Text,
   ) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can submit property listings");
@@ -784,6 +806,8 @@ actor {
       imageUrls;
       kycDocumentUrl;
       rules;
+      checkInTime;
+      checkOutTime;
     };
     propertyListings.add(listingId, listing);
     nextPropertyListingId += 1;
@@ -1220,6 +1244,48 @@ actor {
               rules;
               ownerEmail = hotel.ownerEmail;
               ownerPrincipal = hotel.ownerPrincipal;
+              checkInTime = hotel.checkInTime;
+              checkOutTime = hotel.checkOutTime;
+            };
+            hotels.add(hotelId, updatedHotel);
+          };
+        };
+      };
+    };
+  };
+
+  public shared ({ caller }) func updateHotelTimes(checkInTime : Text, checkOutTime : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only hotel owners can update times");
+    };
+
+    if (not isHotelOwner(caller)) {
+      Runtime.trap("Unauthorized: Only hotel owners can update times");
+    };
+
+    switch (hotelOwners.get(caller)) {
+      case (null) { Runtime.trap("No hotel associated with caller") };
+      case (?hotelId) {
+        switch (hotels.get(hotelId)) {
+          case (null) { Runtime.trap("Hotel not found") };
+          case (?hotel) {
+            let updatedHotel : Hotel = {
+              id = hotel.id;
+              name = hotel.name;
+              city = hotel.city;
+              description = hotel.description;
+              starRating = hotel.starRating;
+              pricePerNight = hotel.pricePerNight;
+              amenities = hotel.amenities;
+              address = hotel.address;
+              imageIndex = hotel.imageIndex;
+              imageUrls = hotel.imageUrls;
+              approvalStatus = hotel.approvalStatus;
+              rules = hotel.rules;
+              ownerEmail = hotel.ownerEmail;
+              ownerPrincipal = hotel.ownerPrincipal;
+              checkInTime;
+              checkOutTime;
             };
             hotels.add(hotelId, updatedHotel);
           };

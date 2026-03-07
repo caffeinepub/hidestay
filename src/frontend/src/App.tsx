@@ -962,10 +962,10 @@ function HotelDetailPage({
                   Check-in
                 </p>
                 <p className="font-display font-extrabold text-2xl text-foreground">
-                  12:00 PM
+                  {hotel.checkInTime || "12:00 PM"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Noon onwards
+                  Arrival time
                 </p>
               </div>
             </div>
@@ -981,10 +981,10 @@ function HotelDetailPage({
                   Check-out
                 </p>
                 <p className="font-display font-extrabold text-2xl text-foreground">
-                  11:00 AM
+                  {hotel.checkOutTime || "11:00 AM"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Before 11 AM
+                  Departure time
                 </p>
               </div>
             </div>
@@ -1679,6 +1679,8 @@ function ListPropertyModal({
     description: "",
     amenities: [] as string[],
     rules: "",
+    checkInTime: "12:00 PM",
+    checkOutTime: "11:00 AM",
     ownerName: "",
     ownerPhone: "",
     ownerEmail: "",
@@ -1855,6 +1857,8 @@ function ListPropertyModal({
         imageUrls,
         kycDocumentUrl,
         form.rules,
+        form.checkInTime,
+        form.checkOutTime,
       );
       return id;
     },
@@ -1888,6 +1892,8 @@ function ListPropertyModal({
       description: "",
       amenities: [],
       rules: "",
+      checkInTime: "12:00 PM",
+      checkOutTime: "11:00 AM",
       ownerName: "",
       ownerPhone: "",
       ownerEmail: "",
@@ -2227,6 +2233,56 @@ function ListPropertyModal({
                       Write one rule per line. These will be displayed on your
                       hotel's detail page.
                     </p>
+                  </div>
+
+                  {/* Check-in / Check-out Times */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-checkin-time"
+                        className="text-sm font-semibold flex items-center gap-1.5"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                        Check-in Time
+                      </Label>
+                      <Input
+                        id="lp-checkin-time"
+                        data-ocid="list_property.checkin_time_input"
+                        type="text"
+                        placeholder="e.g. 12:00 PM"
+                        value={form.checkInTime}
+                        onChange={(e) =>
+                          updateField("checkInTime", e.target.value)
+                        }
+                        className="rounded-lg border-input"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Format: 12:00 PM
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="lp-checkout-time"
+                        className="text-sm font-semibold flex items-center gap-1.5"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                        Check-out Time
+                      </Label>
+                      <Input
+                        id="lp-checkout-time"
+                        data-ocid="list_property.checkout_time_input"
+                        type="text"
+                        placeholder="e.g. 11:00 AM"
+                        value={form.checkOutTime}
+                        onChange={(e) =>
+                          updateField("checkOutTime", e.target.value)
+                        }
+                        className="rounded-lg border-input"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Format: 11:00 AM
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -46,9 +46,11 @@ export interface Hotel {
   'pricePerNight' : bigint,
   'name' : string,
   'description' : string,
+  'checkInTime' : string,
   'amenities' : Array<string>,
   'approvalStatus' : HotelApprovalStatus,
   'address' : string,
+  'checkOutTime' : string,
   'imageIndex' : bigint,
   'rules' : string,
 }
@@ -75,8 +77,10 @@ export interface PropertyListing {
   'submittedAt' : bigint,
   'submittedBy' : Principal,
   'description' : string,
+  'checkInTime' : string,
   'amenities' : Array<string>,
   'address' : string,
+  'checkOutTime' : string,
   'kycDocumentUrl' : string,
   'roomType' : string,
   'rules' : string,
@@ -141,6 +145,8 @@ export interface _SERVICE {
       bigint,
       Array<string>,
       string,
+      string,
+      string,
     ],
     bigint
   >,
@@ -202,6 +208,8 @@ export interface _SERVICE {
       Array<string>,
       string,
       string,
+      string,
+      string,
     ],
     bigint
   >,
@@ -211,6 +219,7 @@ export interface _SERVICE {
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
   'updateCustomerProfile' : ActorMethod<[string, string, string], undefined>,
   'updateHotelRules' : ActorMethod<[string], undefined>,
+  'updateHotelTimes' : ActorMethod<[string, string], undefined>,
   'updateRoomInventory' : ActorMethod<[bigint, bigint], undefined>,
   'verifyAdminOtp' : ActorMethod<[string], boolean>,
 }

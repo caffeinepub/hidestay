@@ -117,8 +117,10 @@ export interface PropertyListing {
     submittedAt: bigint;
     submittedBy: Principal;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     address: string;
+    checkOutTime: string;
     kycDocumentUrl: string;
     roomType: string;
     rules: string;
@@ -139,9 +141,11 @@ export interface Hotel {
     pricePerNight: bigint;
     name: string;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     approvalStatus: HotelApprovalStatus;
     address: string;
+    checkOutTime: string;
     imageIndex: bigint;
     rules: string;
 }
@@ -207,7 +211,7 @@ export interface backendInterface {
     _caffeineStorageRefillCashier(refillInformation: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult>;
     _caffeineStorageUpdateGatewayPrincipals(): Promise<void>;
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
-    addHotelAdmin(name: string, city: string, description: string, starRating: bigint, pricePerNight: bigint, amenities: Array<string>, address: string, imageIndex: bigint, imageUrls: Array<string>, rules: string): Promise<bigint>;
+    addHotelAdmin(name: string, city: string, description: string, starRating: bigint, pricePerNight: bigint, amenities: Array<string>, address: string, imageIndex: bigint, imageUrls: Array<string>, rules: string, checkInTime: string, checkOutTime: string): Promise<bigint>;
     approveHotel(id: bigint): Promise<void>;
     approvePropertyListing(listingId: bigint): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
@@ -246,13 +250,14 @@ export interface backendInterface {
     revokeHotelOwner(user: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
-    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string, rules: string): Promise<bigint>;
+    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string, rules: string, checkInTime: string, checkOutTime: string): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     unlockAdminAccount(): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateCustomerProfile(name: string, email: string, mobile: string): Promise<void>;
     updateHotelRules(rules: string): Promise<void>;
+    updateHotelTimes(checkInTime: string, checkOutTime: string): Promise<void>;
     updateRoomInventory(totalRooms: bigint, availableRooms: bigint): Promise<void>;
     verifyAdminOtp(code: string): Promise<boolean>;
 }
@@ -357,17 +362,17 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async addHotelAdmin(arg0: string, arg1: string, arg2: string, arg3: bigint, arg4: bigint, arg5: Array<string>, arg6: string, arg7: bigint, arg8: Array<string>, arg9: string): Promise<bigint> {
+    async addHotelAdmin(arg0: string, arg1: string, arg2: string, arg3: bigint, arg4: bigint, arg5: Array<string>, arg6: string, arg7: bigint, arg8: Array<string>, arg9: string, arg10: string, arg11: string): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.addHotelAdmin(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+                const result = await this.actor.addHotelAdmin(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.addHotelAdmin(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+            const result = await this.actor.addHotelAdmin(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
             return result;
         }
     }
@@ -903,17 +908,17 @@ export class Backend implements backendInterface {
             return from_candid_vec_n23(this._uploadFile, this._downloadFile, result);
         }
     }
-    async submitPropertyListing(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: string, arg8: Array<string>, arg9: string, arg10: string, arg11: bigint, arg12: Array<string>, arg13: string, arg14: string): Promise<bigint> {
+    async submitPropertyListing(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: bigint, arg7: string, arg8: Array<string>, arg9: string, arg10: string, arg11: bigint, arg12: Array<string>, arg13: string, arg14: string, arg15: string, arg16: string): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+                const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+            const result = await this.actor.submitPropertyListing(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16);
             return result;
         }
     }
@@ -998,6 +1003,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.updateHotelRules(arg0);
+            return result;
+        }
+    }
+    async updateHotelTimes(arg0: string, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateHotelTimes(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateHotelTimes(arg0, arg1);
             return result;
         }
     }
@@ -1115,9 +1134,11 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     pricePerNight: bigint;
     name: string;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     approvalStatus: _HotelApprovalStatus;
     address: string;
+    checkOutTime: string;
     imageIndex: bigint;
     rules: string;
 }): {
@@ -1130,9 +1151,11 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     pricePerNight: bigint;
     name: string;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     approvalStatus: HotelApprovalStatus;
     address: string;
+    checkOutTime: string;
     imageIndex: bigint;
     rules: string;
 } {
@@ -1146,9 +1169,11 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
         pricePerNight: value.pricePerNight,
         name: value.name,
         description: value.description,
+        checkInTime: value.checkInTime,
         amenities: value.amenities,
         approvalStatus: from_candid_HotelApprovalStatus_n21(_uploadFile, _downloadFile, value.approvalStatus),
         address: value.address,
+        checkOutTime: value.checkOutTime,
         imageIndex: value.imageIndex,
         rules: value.rules
     };
@@ -1167,8 +1192,10 @@ function from_candid_record_n26(_uploadFile: (file: ExternalBlob) => Promise<Uin
     submittedAt: bigint;
     submittedBy: Principal;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     address: string;
+    checkOutTime: string;
     kycDocumentUrl: string;
     roomType: string;
     rules: string;
@@ -1186,8 +1213,10 @@ function from_candid_record_n26(_uploadFile: (file: ExternalBlob) => Promise<Uin
     submittedAt: bigint;
     submittedBy: Principal;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     address: string;
+    checkOutTime: string;
     kycDocumentUrl: string;
     roomType: string;
     rules: string;
@@ -1206,8 +1235,10 @@ function from_candid_record_n26(_uploadFile: (file: ExternalBlob) => Promise<Uin
         submittedAt: value.submittedAt,
         submittedBy: value.submittedBy,
         description: value.description,
+        checkInTime: value.checkInTime,
         amenities: value.amenities,
         address: value.address,
+        checkOutTime: value.checkOutTime,
         kycDocumentUrl: value.kycDocumentUrl,
         roomType: value.roomType,
         rules: value.rules

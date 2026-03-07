@@ -55,6 +55,7 @@ type DashboardTab =
   | "inventory"
   | "calendar"
   | "rules"
+  | "times"
   | "edit";
 
 interface ImageFile {
@@ -125,6 +126,7 @@ interface OverviewTabProps {
   onGoToBookings: () => void;
   onGoToCalendar: () => void;
   onGoToRules: () => void;
+  onGoToTimes: () => void;
   onGoToEdit: () => void;
 }
 
@@ -135,6 +137,7 @@ function OverviewTab({
   onGoToBookings,
   onGoToCalendar,
   onGoToRules,
+  onGoToTimes,
   onGoToEdit,
 }: OverviewTabProps) {
   const totalRooms = Number(inventory?.totalRooms ?? 0);
@@ -225,6 +228,14 @@ function OverviewTab({
           >
             <ScrollText className="w-4 h-4" />
             Edit Rules
+          </button>
+          <button
+            type="button"
+            onClick={onGoToTimes}
+            className="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-sm px-4 py-2 rounded-xl transition-all duration-200 border border-white/20"
+          >
+            <Clock className="w-4 h-4" />
+            Edit Times
           </button>
           <button
             type="button"
@@ -1405,6 +1416,176 @@ function RulesTab({ hotel, actor, onRefresh }: RulesTabProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tab: Check-in / Check-out Times
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TimesTabProps {
+  hotel: Hotel;
+  actor: import("../backend").backendInterface | null;
+  onRefresh: () => void;
+}
+
+function TimesTab({ hotel, actor, onRefresh }: TimesTabProps) {
+  const queryClient = useQueryClient();
+  const [checkInTime, setCheckInTime] = useState(
+    hotel.checkInTime || "12:00 PM",
+  );
+  const [checkOutTime, setCheckOutTime] = useState(
+    hotel.checkOutTime || "11:00 AM",
+  );
+
+  const { mutate: saveTimes, isPending } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      await actor.updateHotelTimes(checkInTime, checkOutTime);
+    },
+    onSuccess: () => {
+      toast.success("Check-in/out times updated!");
+      queryClient.invalidateQueries({ queryKey: ["ownerHotel"] });
+      onRefresh();
+    },
+    onError: () => {
+      toast.error("Failed to update times");
+    },
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-5">
+          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <Clock className="w-4 h-4 text-blue-600" />
+          </div>
+          <h3 className="font-display font-bold text-base text-foreground">
+            Check-in &amp; Check-out Times
+          </h3>
+        </div>
+
+        {/* Saves immediately banner */}
+        <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5">
+          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+          <p className="text-green-700 text-sm">
+            Time changes save <span className="font-semibold">immediately</span>{" "}
+            and are visible on your hotel's detail page right away.
+          </p>
+        </div>
+
+        <p className="text-sm text-muted-foreground mb-5">
+          These times will be shown publicly on your hotel's detail page.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="owner-checkin-time"
+              className="text-sm font-semibold text-foreground flex items-center gap-1.5"
+            >
+              <Clock className="w-3.5 h-3.5 text-green-600" />
+              Check-in Time
+            </label>
+            <Input
+              id="owner-checkin-time"
+              data-ocid="owner_dashboard.checkin_time_input"
+              type="text"
+              placeholder="e.g. 12:00 PM"
+              value={checkInTime}
+              onChange={(e) => setCheckInTime(e.target.value)}
+              className="rounded-xl border-input"
+            />
+            <p className="text-xs text-muted-foreground">
+              Format: 12:00 PM · When guests can arrive
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="owner-checkout-time"
+              className="text-sm font-semibold text-foreground flex items-center gap-1.5"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              Check-out Time
+            </label>
+            <Input
+              id="owner-checkout-time"
+              data-ocid="owner_dashboard.checkout_time_input"
+              type="text"
+              placeholder="e.g. 11:00 AM"
+              value={checkOutTime}
+              onChange={(e) => setCheckOutTime(e.target.value)}
+              className="rounded-xl border-input"
+            />
+            <p className="text-xs text-muted-foreground">
+              Format: 11:00 AM · When guests must leave
+            </p>
+          </div>
+        </div>
+
+        <Button
+          data-ocid="owner_dashboard.save_times_button"
+          type="button"
+          disabled={isPending}
+          onClick={() => saveTimes()}
+          className="w-full mt-6 bg-[oklch(0.52_0.22_25.5)] hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl transition-all duration-200"
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Clock className="mr-2 h-4 w-4" />
+              Save Times
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Preview */}
+      <div className="bg-muted/30 border border-border rounded-2xl p-5">
+        <h4 className="font-display font-bold text-sm text-foreground mb-4 flex items-center gap-2">
+          <Info className="w-4 h-4 text-muted-foreground" />
+          Preview (as shown on hotel detail page)
+        </h4>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Clock className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-0.5">
+                Check-in
+              </p>
+              <p className="font-display font-extrabold text-lg text-foreground leading-tight">
+                {checkInTime || "12:00 PM"}
+              </p>
+            </div>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-0.5">
+                Check-out
+              </p>
+              <p className="font-display font-extrabold text-lg text-foreground leading-tight">
+                {checkOutTime || "11:00 AM"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tab: Edit Property
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1444,6 +1625,8 @@ function EditPropertyTab({ hotel, actor, onRefresh }: EditPropertyTabProps) {
           hotel.imageUrls, // imageUrls (unchanged)
           "", // kycDocumentUrl
           hotel.rules, // rules (unchanged)
+          hotel.checkInTime || "12:00 PM", // checkInTime (unchanged)
+          hotel.checkOutTime || "11:00 AM", // checkOutTime (unchanged)
         );
       },
       onSuccess: () => {
@@ -1488,6 +1671,8 @@ function EditPropertyTab({ hotel, actor, onRefresh }: EditPropertyTabProps) {
           hotel.imageUrls,
           "",
           hotel.rules,
+          hotel.checkInTime || "12:00 PM",
+          hotel.checkOutTime || "11:00 AM",
         );
       },
       onSuccess: () => {
@@ -1622,6 +1807,8 @@ function EditPropertyTab({ hotel, actor, onRefresh }: EditPropertyTabProps) {
         finalUrls,
         "",
         hotel.rules,
+        hotel.checkInTime || "12:00 PM",
+        hotel.checkOutTime || "11:00 AM",
       );
 
       setImageUrls(finalUrls);
@@ -2218,6 +2405,11 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
       icon: <ScrollText className="w-4 h-4" />,
     },
     {
+      id: "times",
+      label: "Times",
+      icon: <Clock className="w-4 h-4" />,
+    },
+    {
       id: "edit",
       label: "Edit Property",
       icon: <PencilLine className="w-4 h-4" />,
@@ -2343,6 +2535,7 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                         onGoToBookings={() => setActiveTab("bookings")}
                         onGoToCalendar={() => setActiveTab("calendar")}
                         onGoToRules={() => setActiveTab("rules")}
+                        onGoToTimes={() => setActiveTab("times")}
                         onGoToEdit={() => setActiveTab("edit")}
                       />
                     </motion.div>
@@ -2386,6 +2579,16 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                   {activeTab === "rules" && (
                     <motion.div key="rules">
                       <RulesTab
+                        hotel={hotel}
+                        actor={actor}
+                        onRefresh={handleRefreshAll}
+                      />
+                    </motion.div>
+                  )}
+
+                  {activeTab === "times" && (
+                    <motion.div key="times">
+                      <TimesTab
                         hotel={hotel}
                         actor={actor}
                         onRefresh={handleRefreshAll}

@@ -1,5 +1,6 @@
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
+import Principal "mo:core/Principal";
 
 module {
   type OldHotel = {
@@ -13,33 +14,50 @@ module {
     address : Text;
     imageIndex : Nat;
     imageUrls : [Text];
-    approvalStatus : { #Approved; #Pending; #Rejected };
+    approvalStatus : {
+      #Approved;
+      #Pending;
+      #Rejected;
+    };
+    rules : Text;
+    ownerEmail : Text;
+    ownerPrincipal : Text;
+  };
+
+  type OldPropertyListing = {
+    id : Nat;
+    ownerName : Text;
+    ownerPhone : Text;
+    ownerEmail : Text;
+    hotelName : Text;
+    city : Text;
+    address : Text;
+    pricePerNight : Int;
+    roomType : Text;
+    amenities : [Text];
+    description : Text;
+    subscriptionPlan : Text;
+    status : {
+      #PendingApproval;
+      #Approved;
+      #Rejected;
+    };
+    submittedAt : Int;
+    submittedBy : Principal;
+    imageUrls : [Text];
+    kycDocumentUrl : Text;
     rules : Text;
   };
 
   type OldActor = {
     hotels : Map.Map<Nat, OldHotel>;
+    propertyListings : Map.Map<Nat, OldPropertyListing>;
     hotelOwners : Map.Map<Principal, Nat>;
-    roomInventory : Map.Map<Nat, { hotelId : Nat; roomType : Text; totalRooms : Nat; availableRooms : Nat }>;
-    propertyListings : Map.Map<Nat, {
-      id : Nat;
-      ownerName : Text;
-      ownerPhone : Text;
-      ownerEmail : Text;
-      hotelName : Text;
-      city : Text;
-      address : Text;
-      pricePerNight : Int;
+    roomInventory : Map.Map<Nat, {
+      hotelId : Nat;
       roomType : Text;
-      amenities : [Text];
-      description : Text;
-      subscriptionPlan : Text;
-      status : { #PendingApproval; #Approved; #Rejected };
-      submittedAt : Int;
-      submittedBy : Principal;
-      imageUrls : [Text];
-      kycDocumentUrl : Text;
-      rules : Text;
+      totalRooms : Nat;
+      availableRooms : Nat;
     }>;
     bookings : Map.Map<Nat, {
       id : Nat;
@@ -50,7 +68,11 @@ module {
       checkIn : Text;
       checkOut : Text;
       guestCount : Nat;
-      status : { #Confirmed; #Pending; #Cancelled };
+      status : {
+        #Confirmed;
+        #Pending;
+        #Cancelled;
+      };
       created : Int;
       owner : Principal;
     }>;
@@ -71,8 +93,15 @@ module {
     mobileToPrincipal : Map.Map<Text, Principal>;
     adminLockedAccounts : Map.Map<Principal, Bool>;
     adminLoginAttempts : Map.Map<Principal, Nat>;
-    adminOtps : Map.Map<Principal, { code : Text; expiresAt : Int }>;
-    userProfiles : Map.Map<Principal, { name : Text; email : Text; phone : Text }>;
+    adminOtps : Map.Map<Principal, {
+      code : Text;
+      expiresAt : Int;
+    }>;
+    userProfiles : Map.Map<Principal, {
+      name : Text;
+      email : Text;
+      phone : Text;
+    }>;
     nextHotelId : Nat;
     nextBookingId : Nat;
     nextPropertyListingId : Nat;
@@ -92,13 +121,17 @@ module {
       address : Text;
       imageIndex : Nat;
       imageUrls : [Text];
-      approvalStatus : { #Approved; #Pending; #Rejected };
+      approvalStatus : {
+        #Approved;
+        #Pending;
+        #Rejected;
+      };
       rules : Text;
       ownerEmail : Text;
       ownerPrincipal : Text;
+      checkInTime : Text;
+      checkOutTime : Text;
     }>;
-    hotelOwners : Map.Map<Principal, Nat>;
-    roomInventory : Map.Map<Nat, { hotelId : Nat; roomType : Text; totalRooms : Nat; availableRooms : Nat }>;
     propertyListings : Map.Map<Nat, {
       id : Nat;
       ownerName : Text;
@@ -112,12 +145,25 @@ module {
       amenities : [Text];
       description : Text;
       subscriptionPlan : Text;
-      status : { #PendingApproval; #Approved; #Rejected };
+      status : {
+        #PendingApproval;
+        #Approved;
+        #Rejected;
+      };
       submittedAt : Int;
       submittedBy : Principal;
       imageUrls : [Text];
       kycDocumentUrl : Text;
       rules : Text;
+      checkInTime : Text;
+      checkOutTime : Text;
+    }>;
+    hotelOwners : Map.Map<Principal, Nat>;
+    roomInventory : Map.Map<Nat, {
+      hotelId : Nat;
+      roomType : Text;
+      totalRooms : Nat;
+      availableRooms : Nat;
     }>;
     bookings : Map.Map<Nat, {
       id : Nat;
@@ -128,7 +174,11 @@ module {
       checkIn : Text;
       checkOut : Text;
       guestCount : Nat;
-      status : { #Confirmed; #Pending; #Cancelled };
+      status : {
+        #Confirmed;
+        #Pending;
+        #Cancelled;
+      };
       created : Int;
       owner : Principal;
     }>;
@@ -149,8 +199,15 @@ module {
     mobileToPrincipal : Map.Map<Text, Principal>;
     adminLockedAccounts : Map.Map<Principal, Bool>;
     adminLoginAttempts : Map.Map<Principal, Nat>;
-    adminOtps : Map.Map<Principal, { code : Text; expiresAt : Int }>;
-    userProfiles : Map.Map<Principal, { name : Text; email : Text; phone : Text }>;
+    adminOtps : Map.Map<Principal, {
+      code : Text;
+      expiresAt : Int;
+    }>;
+    userProfiles : Map.Map<Principal, {
+      name : Text;
+      email : Text;
+      phone : Text;
+    }>;
     nextHotelId : Nat;
     nextBookingId : Nat;
     nextPropertyListingId : Nat;
@@ -170,15 +227,61 @@ module {
       address : Text;
       imageIndex : Nat;
       imageUrls : [Text];
-      approvalStatus : { #Approved; #Pending; #Rejected };
+      approvalStatus : {
+        #Approved;
+        #Pending;
+        #Rejected;
+      };
       rules : Text;
       ownerEmail : Text;
       ownerPrincipal : Text;
-    }>(
-      func(_id, oldHotel) {
-        { oldHotel with ownerEmail = ""; ownerPrincipal = "" };
-      }
-    );
-    { old with hotels = newHotels };
+      checkInTime : Text;
+      checkOutTime : Text;
+    }>(func(_, oldHotel) {
+      {
+        oldHotel with
+        checkInTime = "12:00 PM";
+        checkOutTime = "11:00 AM";
+      };
+    });
+
+    let newPropertyListings = old.propertyListings.map<Nat, OldPropertyListing, {
+      id : Nat;
+      ownerName : Text;
+      ownerPhone : Text;
+      ownerEmail : Text;
+      hotelName : Text;
+      city : Text;
+      address : Text;
+      pricePerNight : Int;
+      roomType : Text;
+      amenities : [Text];
+      description : Text;
+      subscriptionPlan : Text;
+      status : {
+        #PendingApproval;
+        #Approved;
+        #Rejected;
+      };
+      submittedAt : Int;
+      submittedBy : Principal;
+      imageUrls : [Text];
+      kycDocumentUrl : Text;
+      rules : Text;
+      checkInTime : Text;
+      checkOutTime : Text;
+    }>(func(_, oldListing) {
+      {
+        oldListing with
+        checkInTime = "12:00 PM";
+        checkOutTime = "11:00 AM";
+      };
+    });
+
+    {
+      old with
+      hotels = newHotels;
+      propertyListings = newPropertyListings;
+    };
   };
 };

@@ -1,46 +1,56 @@
-# HIDESTAY
+# HIDESTAY — Editable Check-in / Check-out System
 
 ## Current State
-The Hotel Owner Dashboard has 5 tabs: Overview, Bookings, Inventory, Calendar, Rules. Owners can view hotel info, manage bookings, update total room count, block/unblock calendar dates, and edit rules text. There is no way to edit core property details (name, address, description, contact info), upload/delete hotel images, or set pricing/discounts.
 
-Backend has: `updateHotelRules`, `updateRoomInventory`, `getOwnerHotel`, `getOwnerRoomInventory`, `getHotelImageUrls`. No endpoint exists to update hotel details, images, or pricing.
+- `Hotel` type has fields: id, name, city, description, starRating, pricePerNight, amenities, address, imageIndex, imageUrls, approvalStatus, rules, ownerEmail, ownerPrincipal.
+- Check-in and Check-out times on the Hotel Detail Page are **hardcoded** strings ("12:00 PM" / "11:00 AM") in App.tsx — they are not stored or fetched from the backend.
+- `PropertyListing` type does not include checkInTime or checkOutTime fields.
+- `submitPropertyListing` does not accept checkInTime/checkOutTime parameters.
+- The Owner Dashboard has no UI to edit check-in/check-out times.
+- No backend endpoint exists to update hotel check-in/check-out times.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Backend: `updateHotelDetails(name, address, description, contactInfo)` — owner-only, updates name/address/description/contact on the hotel record
-- Backend: `updateHotelPricing(pricePerNight, discount)` — owner-only, updates pricing and discount fields
-- Backend: `updateHotelImages(imageUrls)` — owner-only, replaces hotel imageUrls array
-- Backend: `Hotel` type gains `contactInfo: Text` and `discount: Nat` fields (discount = % off, 0 means none)
-- Frontend: New "Edit Property" tab (6th tab) in Owner Dashboard
-  - Section 1: Property Details form (hotel name, address, description, contact info) with Save
-  - Section 2: Pricing & Discounts form (price per night, discount %) with Save
-  - Section 3: Hotel Images manager (upload new images via blob storage, delete individual images, drag-to-reorder) with Save
-- Frontend: Inventory tab extended to allow setting available rooms directly (not just total rooms), with separate total/available fields
-- Frontend: Overview tab quick-action button added for "Edit Property"
-- Changes reflect instantly on the public hotel detail page (already reads from `getHotel`/`searchHotels` which return the live hotel record)
+- `checkInTime: Text` and `checkOutTime: Text` fields to the `Hotel` type.
+- `checkInTime: Text` and `checkOutTime: Text` fields to the `PropertyListing` type.
+- `checkInTime` and `checkOutTime` parameters to `submitPropertyListing` backend function.
+- `updateHotelTimes(checkInTime: Text, checkOutTime: Text)` — owner-only endpoint to update times directly on the hotel record (same pattern as `updateHotelRules`).
+- Check-in Time and Check-out Time input fields in the "List Your Property" modal form (App.tsx).
+- A new "Times" tab (or section within the existing "Rules" tab) in the Owner Dashboard where the owner can edit check-in/check-out times and save them instantly.
 
 ### Modify
-- Backend: `Hotel` type — add `contactInfo: Text` and `discount: Nat` fields
-- Backend: All places that construct a Hotel record (approveHotel, rejectHotel, suspendHotel, approvePropertyListing, updateHotelRules) must carry through `contactInfo` and `discount`
-- Backend: `updateRoomInventory` — already accepts `totalRooms` and `availableRooms`; frontend currently passes same value for both; fix frontend to send separate values
-- Frontend: `InventoryTab` — add `availableRooms` field as a separate editable field
-- Frontend: `OverviewTab` — add "Edit Property" quick action button
-- Frontend: `DashboardTab` type — add `"edit"` variant
-- Frontend: `TABS` array — add "Edit Property" tab entry
+- `approvePropertyListing` — copy `listing.checkInTime` and `listing.checkOutTime` to the new hotel record.
+- `addHotelAdmin` — include default `checkInTime = "12:00 PM"` and `checkOutTime = "11:00 AM"` so seeded hotels keep working.
+- All hotel record reconstructions (`approveHotel`, `rejectHotel`, `suspendHotel`, `updateHotelRules`) — carry through the new `checkInTime` and `checkOutTime` fields unchanged.
+- Hotel Detail Page (App.tsx) — replace hardcoded "12:00 PM" / "11:00 AM" with `hotel.checkInTime` / `hotel.checkOutTime` from the fetched hotel object.
+- Owner Dashboard — add a "Times" tab with editable time fields that call `updateHotelTimes`.
 
 ### Remove
-- Nothing removed
+- Nothing removed.
 
 ## Implementation Plan
-1. Update `Hotel` type in main.mo to include `contactInfo: Text` and `discount: Nat`
-2. Update all hotel record construction sites to include the two new fields (default empty/0 for existing hotels)
-3. Add `updateHotelDetails(name, address, description, contactInfo)` owner-only endpoint
-4. Add `updateHotelPricing(pricePerNight, discount)` owner-only endpoint
-5. Add `updateHotelImages(imageUrls)` owner-only endpoint
-6. Update `backend.d.ts` to reflect new Hotel fields and new methods
-7. Add `EditPropertyTab` component with three form sections: Details, Pricing, Images
-8. Add `"edit"` to `DashboardTab` type and add tab entry to `TABS` array
-9. Wire blob-storage upload in EditPropertyTab image section
-10. Fix InventoryTab to send separate totalRooms and availableRooms values
-11. Add "Edit Property" quick-action button in OverviewTab
+
+1. **Backend (Motoko)**
+   - Add `checkInTime: Text` and `checkOutTime: Text` to `Hotel` type.
+   - Add `checkInTime: Text` and `checkOutTime: Text` to `PropertyListing` type.
+   - Update `addHotelAdmin` to accept and store these fields (with defaults "12:00 PM" / "11:00 AM").
+   - Update `submitPropertyListing` to accept `checkInTime` and `checkOutTime`.
+   - Update `approvePropertyListing` to copy times from listing to hotel.
+   - Update all hotel record reconstructions to carry the new fields.
+   - Add `updateHotelTimes(checkInTime, checkOutTime)` — owner-only, updates hotel record directly (same pattern as `updateHotelRules`).
+
+2. **Frontend — List Your Property form (App.tsx)**
+   - Add `checkInTime` and `checkOutTime` to the form state (defaults: "12:00 PM", "11:00 AM").
+   - Add time input fields (text inputs with time format hints) in the Hotel Details section.
+   - Pass the two new fields to `submitPropertyListing`.
+
+3. **Frontend — Hotel Detail Page (App.tsx)**
+   - Replace hardcoded "12:00 PM" / "11:00 AM" strings with `hotel.checkInTime` / `hotel.checkOutTime` from the fetched hotel object.
+   - Update subtitle hints accordingly (dynamic based on value).
+
+4. **Frontend — Owner Dashboard (OwnerDashboard.tsx)**
+   - Add a "Times" tab to `DashboardTab` type.
+   - Build a `TimesTab` component: two text inputs for Check-in Time and Check-out Time, pre-filled with current hotel values, with a Save button that calls `updateHotelTimes`.
+   - Add the tab button in the tab bar.
+   - Wire the mutation and invalidate the hotel query on success.

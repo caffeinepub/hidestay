@@ -28,8 +28,10 @@ export interface PropertyListing {
     submittedAt: bigint;
     submittedBy: Principal;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     address: string;
+    checkOutTime: string;
     kycDocumentUrl: string;
     roomType: string;
     rules: string;
@@ -50,9 +52,11 @@ export interface Hotel {
     pricePerNight: bigint;
     name: string;
     description: string;
+    checkInTime: string;
     amenities: Array<string>;
     approvalStatus: HotelApprovalStatus;
     address: string;
+    checkOutTime: string;
     imageIndex: bigint;
     rules: string;
 }
@@ -107,7 +111,7 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
-    addHotelAdmin(name: string, city: string, description: string, starRating: bigint, pricePerNight: bigint, amenities: Array<string>, address: string, imageIndex: bigint, imageUrls: Array<string>, rules: string): Promise<bigint>;
+    addHotelAdmin(name: string, city: string, description: string, starRating: bigint, pricePerNight: bigint, amenities: Array<string>, address: string, imageIndex: bigint, imageUrls: Array<string>, rules: string, checkInTime: string, checkOutTime: string): Promise<bigint>;
     approveHotel(id: bigint): Promise<void>;
     approvePropertyListing(listingId: bigint): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
@@ -146,13 +150,14 @@ export interface backendInterface {
     revokeHotelOwner(user: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
-    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string, rules: string): Promise<bigint>;
+    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string, rules: string, checkInTime: string, checkOutTime: string): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
     unlockAdminAccount(): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
     updateCustomerProfile(name: string, email: string, mobile: string): Promise<void>;
     updateHotelRules(rules: string): Promise<void>;
+    updateHotelTimes(checkInTime: string, checkOutTime: string): Promise<void>;
     updateRoomInventory(totalRooms: bigint, availableRooms: bigint): Promise<void>;
     verifyAdminOtp(code: string): Promise<boolean>;
 }
