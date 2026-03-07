@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
+import { HttpAgent } from "@icp-sdk/core/agent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -14,27 +15,35 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  Camera,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
   Clock,
   Home,
   Hotel as HotelIcon,
+  ImagePlus,
   Info,
   Loader2,
   MapPin,
   Package,
+  PencilLine,
+  Phone,
   ScrollText,
+  Send,
   Star,
   Trash2,
   X,
   XCircle,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { BlockedDate, Booking, Hotel, RoomInventory } from "../backend.d";
 import { Status } from "../backend.d";
+import { loadConfig } from "../config";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import { StorageClient } from "../utils/StorageClient";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -45,7 +54,16 @@ type DashboardTab =
   | "bookings"
   | "inventory"
   | "calendar"
-  | "rules";
+  | "rules"
+  | "edit";
+
+interface ImageFile {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: "idle" | "uploading" | "done" | "error";
+  uploadedUrl?: string;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -107,6 +125,7 @@ interface OverviewTabProps {
   onGoToBookings: () => void;
   onGoToCalendar: () => void;
   onGoToRules: () => void;
+  onGoToEdit: () => void;
 }
 
 function OverviewTab({
@@ -116,6 +135,7 @@ function OverviewTab({
   onGoToBookings,
   onGoToCalendar,
   onGoToRules,
+  onGoToEdit,
 }: OverviewTabProps) {
   const totalRooms = Number(inventory?.totalRooms ?? 0);
   const availableRooms = Number(inventory?.availableRooms ?? 0);
@@ -181,7 +201,7 @@ function OverviewTab({
         </div>
 
         {/* Quick actions */}
-        <div className="flex gap-3 mt-5">
+        <div className="flex flex-wrap gap-3 mt-5">
           <button
             type="button"
             onClick={onGoToBookings}
@@ -205,6 +225,15 @@ function OverviewTab({
           >
             <ScrollText className="w-4 h-4" />
             Edit Rules
+          </button>
+          <button
+            type="button"
+            data-ocid="owner_dashboard.overview.edit_property_button"
+            onClick={onGoToEdit}
+            className="flex items-center gap-2 bg-white/25 hover:bg-white/35 text-white font-semibold text-sm px-4 py-2 rounded-xl transition-all duration-200 border border-white/30"
+          >
+            <PencilLine className="w-4 h-4" />
+            Edit Property
           </button>
         </div>
       </div>
@@ -516,7 +545,7 @@ function BookingsTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab: Inventory
+// Tab: Inventory  (FIXED: separate totalRooms + availableRooms)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface InventoryTabProps {
@@ -537,29 +566,46 @@ function InventoryTab({
   const [totalRooms, setTotalRooms] = useState(
     inventory ? Number(inventory.totalRooms).toString() : "",
   );
+  const [availableRooms, setAvailableRooms] = useState(
+    inventory ? Number(inventory.availableRooms).toString() : "",
+  );
 
   const { mutate: updateInventory, isPending } = useMutation({
     mutationFn: async () => {
       if (!actor) throw new Error("Not connected");
-      await actor.updateRoomInventory(
-        BigInt(Number.parseInt(totalRooms)),
-        BigInt(Number.parseInt(totalRooms)),
-      );
+      const total = Number.parseInt(totalRooms);
+      const available = Number.parseInt(availableRooms);
+      if (available > total) {
+        throw new Error("Available rooms cannot exceed total rooms.");
+      }
+      await actor.updateRoomInventory(BigInt(total), BigInt(available));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["owner-inventory"] });
       onRefresh();
       toast.success("Room inventory updated successfully.");
     },
-    onError: () => {
-      toast.error("Failed to update inventory. Please try again.");
+    onError: (err: Error) => {
+      toast.error(
+        err.message ?? "Failed to update inventory. Please try again.",
+      );
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomType.trim() || !totalRooms || Number.parseInt(totalRooms) < 1) {
+    const total = Number.parseInt(totalRooms);
+    const available = Number.parseInt(availableRooms);
+    if (!roomType.trim() || !totalRooms || total < 1) {
       toast.error("Please enter a valid room type and total rooms (min 1).");
+      return;
+    }
+    if (availableRooms === "" || available < 0) {
+      toast.error("Please enter a valid available rooms count (min 0).");
+      return;
+    }
+    if (available > total) {
+      toast.error("Available rooms cannot exceed total rooms.");
       return;
     }
     updateInventory();
@@ -659,11 +705,13 @@ function InventoryTab({
       )}
 
       {/* Info Note */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-        <p className="text-blue-700 text-sm">
-          Available rooms are automatically reduced when bookings are confirmed
-          and restored when cancelled.
+      <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+        <p className="text-green-700 text-sm">
+          Inventory changes save{" "}
+          <span className="font-semibold">immediately</span> — no admin approval
+          needed. Available rooms are automatically reduced when bookings are
+          confirmed.
         </p>
       </div>
 
@@ -688,6 +736,7 @@ function InventoryTab({
             </Label>
             <Input
               id="inv-room-type"
+              data-ocid="owner_dashboard.inventory.roomtype_input"
               placeholder="e.g. Standard, Deluxe, Suite"
               value={roomType}
               onChange={(e) => setRoomType(e.target.value)}
@@ -696,25 +745,66 @@ function InventoryTab({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="inv-total-rooms" className="text-sm font-semibold">
-              Total Rooms
-            </Label>
-            <Input
-              id="inv-total-rooms"
-              data-ocid="owner_dashboard.inventory.totalrooms_input"
-              type="number"
-              min={1}
-              placeholder="e.g. 20"
-              value={totalRooms}
-              onChange={(e) => setTotalRooms(e.target.value)}
-              required
-              className="rounded-xl border-input"
-            />
-            <p className="text-xs text-muted-foreground">
-              Minimum 1 room required.
-            </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="inv-total-rooms"
+                className="text-sm font-semibold"
+              >
+                Total Rooms
+              </Label>
+              <Input
+                id="inv-total-rooms"
+                data-ocid="owner_dashboard.inventory.totalrooms_input"
+                type="number"
+                min={1}
+                placeholder="e.g. 20"
+                value={totalRooms}
+                onChange={(e) => setTotalRooms(e.target.value)}
+                required
+                className="rounded-xl border-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Total physical rooms in your hotel.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="inv-available-rooms"
+                className="text-sm font-semibold"
+              >
+                Available Rooms
+              </Label>
+              <Input
+                id="inv-available-rooms"
+                data-ocid="owner_dashboard.inventory.availablerooms_input"
+                type="number"
+                min={0}
+                max={totalRooms ? Number(totalRooms) : undefined}
+                placeholder="e.g. 15"
+                value={availableRooms}
+                onChange={(e) => setAvailableRooms(e.target.value)}
+                required
+                className="rounded-xl border-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be ≤ total rooms.
+              </p>
+            </div>
           </div>
+
+          {/* Validation hint */}
+          {totalRooms &&
+            availableRooms &&
+            Number(availableRooms) > Number(totalRooms) && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <p className="text-red-700 text-sm">
+                  Available rooms cannot exceed total rooms.
+                </p>
+              </div>
+            )}
 
           <Button
             data-ocid="owner_dashboard.inventory.submit_button"
@@ -1235,6 +1325,16 @@ function RulesTab({ hotel, actor, onRefresh }: RulesTabProps) {
           </h3>
         </div>
 
+        {/* Saves immediately banner */}
+        <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-4">
+          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+          <p className="text-green-700 text-sm">
+            Rules changes save{" "}
+            <span className="font-semibold">immediately</span> and are visible
+            on your hotel page right away.
+          </p>
+        </div>
+
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="rules-textarea" className="text-sm font-semibold">
@@ -1300,6 +1400,713 @@ function RulesTab({ hotel, actor, onRefresh }: RulesTabProps) {
           </ul>
         </div>
       )}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab: Edit Property
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EditPropertyTabProps {
+  hotel: Hotel;
+  actor: import("../backend").backendInterface | null;
+  onRefresh: () => void;
+}
+
+function EditPropertyTab({ hotel, actor, onRefresh }: EditPropertyTabProps) {
+  const { identity } = useInternetIdentity();
+
+  // ── Section A: Property Details ──────────────────────────────────────────
+  const [hotelName, setHotelName] = useState(hotel.name);
+  const [address, setAddress] = useState(hotel.address);
+  const [description, setDescription] = useState(hotel.description);
+  const [contactInfo, setContactInfo] = useState(hotel.ownerEmail ?? "");
+  const [detailsSuccess, setDetailsSuccess] = useState(false);
+
+  const { mutate: submitDetailsUpdate, isPending: isSubmittingDetails } =
+    useMutation({
+      mutationFn: async () => {
+        if (!actor) throw new Error("Not connected");
+        await actor.submitPropertyListing(
+          hotel.ownerEmail, // ownerName (use ownerEmail as best proxy)
+          contactInfo, // ownerPhone (contact info)
+          hotel.ownerEmail, // ownerEmail
+          hotelName, // hotelName
+          hotel.city, // city
+          address, // address
+          hotel.pricePerNight, // pricePerNight (unchanged)
+          "", // roomType
+          hotel.amenities, // amenities
+          description, // description
+          "standard", // subscriptionPlan
+          BigInt(Date.now()), // submittedAt
+          hotel.imageUrls, // imageUrls (unchanged)
+          "", // kycDocumentUrl
+          hotel.rules, // rules (unchanged)
+        );
+      },
+      onSuccess: () => {
+        setDetailsSuccess(true);
+        toast.success("Update request submitted — pending admin approval.");
+      },
+      onError: () => {
+        toast.error("Failed to submit update request. Please try again.");
+      },
+    });
+
+  // ── Section B: Pricing & Availability ────────────────────────────────────
+  const [pricePerNight, setPricePerNight] = useState(
+    Number(hotel.pricePerNight).toString(),
+  );
+  const [discountPct, setDiscountPct] = useState("0");
+  const [pricingSuccess, setPricingSuccess] = useState(false);
+
+  const discountedPrice =
+    discountPct && Number(discountPct) > 0
+      ? Math.round(Number(pricePerNight) * (1 - Number(discountPct) / 100))
+      : null;
+
+  const { mutate: submitPricingUpdate, isPending: isSubmittingPricing } =
+    useMutation({
+      mutationFn: async () => {
+        if (!actor) throw new Error("Not connected");
+        const effectivePrice = discountedPrice ?? Number(pricePerNight);
+        await actor.submitPropertyListing(
+          hotel.ownerEmail,
+          hotel.ownerEmail,
+          hotel.ownerEmail,
+          hotel.name,
+          hotel.city,
+          hotel.address,
+          BigInt(Math.round(effectivePrice)),
+          "",
+          hotel.amenities,
+          hotel.description,
+          "standard",
+          BigInt(Date.now()),
+          hotel.imageUrls,
+          "",
+          hotel.rules,
+        );
+      },
+      onSuccess: () => {
+        setPricingSuccess(true);
+        toast.success("Pricing update submitted — pending admin approval.");
+      },
+      onError: () => {
+        toast.error("Failed to submit pricing update. Please try again.");
+      },
+    });
+
+  // ── Section C: Hotel Images ────────────────────────────────────────────────
+  const [imageUrls, setImageUrls] = useState<string[]>([...hotel.imageUrls]);
+  const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [imagesSaved, setImagesSaved] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFileAdd = useCallback(
+    (files: FileList | File[]) => {
+      const remaining = 5 - imageFiles.length - imageUrls.length;
+      let added = 0;
+      for (const file of Array.from(files)) {
+        if (added >= remaining) {
+          toast.error("Maximum 5 images allowed in total.");
+          break;
+        }
+        if (!["image/jpeg", "image/png"].includes(file.type)) {
+          toast.error("Only JPG and PNG files are allowed.");
+          continue;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          toast.error(`${file.name} exceeds 2MB limit.`);
+          continue;
+        }
+        const id = crypto.randomUUID();
+        const previewUrl = URL.createObjectURL(file);
+        setImageFiles((prev) => [
+          ...prev,
+          { id, file, previewUrl, status: "idle" },
+        ]);
+        added++;
+      }
+    },
+    [imageFiles.length, imageUrls.length],
+  );
+
+  const handleRemoveExistingImage = (url: string) => {
+    setImageUrls((prev) => prev.filter((u) => u !== url));
+    setImagesSaved(false);
+  };
+
+  const handleRemoveNewImage = (id: string) => {
+    setImageFiles((prev) => {
+      const f = prev.find((x) => x.id === id);
+      if (f) URL.revokeObjectURL(f.previewUrl);
+      return prev.filter((x) => x.id !== id);
+    });
+    setImagesSaved(false);
+  };
+
+  const handleSaveImages = async () => {
+    if (!actor) return;
+    setIsUploadingImages(true);
+
+    try {
+      let finalUrls = [...imageUrls];
+
+      // Upload new images if any
+      if (imageFiles.length > 0 && identity) {
+        const config = await loadConfig();
+        const agent = new HttpAgent({
+          identity,
+          host: config.backend_host,
+        });
+        if (config.backend_host?.includes("localhost")) {
+          await agent.fetchRootKey().catch(console.error);
+        }
+        const storageClient = new StorageClient(
+          config.bucket_name,
+          config.storage_gateway_url,
+          config.backend_canister_id,
+          config.project_id,
+          agent,
+        );
+
+        for (const imgFile of imageFiles) {
+          setImageFiles((prev) =>
+            prev.map((f) =>
+              f.id === imgFile.id ? { ...f, status: "uploading" } : f,
+            ),
+          );
+          try {
+            const bytes = new Uint8Array(await imgFile.file.arrayBuffer());
+            const { hash } = await storageClient.putFile(bytes);
+            const url = await storageClient.getDirectURL(hash);
+            finalUrls.push(url);
+            setImageFiles((prev) =>
+              prev.map((f) =>
+                f.id === imgFile.id
+                  ? { ...f, status: "done", uploadedUrl: url }
+                  : f,
+              ),
+            );
+          } catch {
+            setImageFiles((prev) =>
+              prev.map((f) =>
+                f.id === imgFile.id ? { ...f, status: "error" } : f,
+              ),
+            );
+            toast.error(`Failed to upload ${imgFile.file.name}.`);
+            setIsUploadingImages(false);
+            return;
+          }
+        }
+      }
+
+      // Submit as update request via submitPropertyListing
+      await actor.submitPropertyListing(
+        hotel.ownerEmail,
+        hotel.ownerEmail,
+        hotel.ownerEmail,
+        hotel.name,
+        hotel.city,
+        hotel.address,
+        hotel.pricePerNight,
+        "",
+        hotel.amenities,
+        hotel.description,
+        "standard",
+        BigInt(Date.now()),
+        finalUrls,
+        "",
+        hotel.rules,
+      );
+
+      setImageUrls(finalUrls);
+      setImageFiles([]);
+      setImagesSaved(true);
+      toast.success("Image update submitted — pending admin approval.");
+      onRefresh();
+    } catch {
+      toast.error("Failed to save images. Please try again.");
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
+  const totalImageCount = imageUrls.length + imageFiles.length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-8"
+    >
+      {/* ── Section A: Property Details ─────────────────────────────────── */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <Building2 className="w-4 h-4 text-blue-600" />
+          </div>
+          <h3 className="font-display font-bold text-base text-foreground">
+            Property Details
+          </h3>
+        </div>
+
+        {/* Approval notice */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-amber-800 text-sm">
+            Property detail changes require{" "}
+            <span className="font-semibold">admin approval</span> before going
+            live on the public site.
+          </p>
+        </div>
+
+        {detailsSuccess && (
+          <motion.div
+            data-ocid="owner_dashboard.edit.details.success_state"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5"
+          >
+            <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+            <p className="text-green-800 text-sm font-semibold">
+              Update request submitted — pending admin approval.
+            </p>
+          </motion.div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setDetailsSuccess(false);
+            submitDetailsUpdate();
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-hotel-name" className="text-sm font-semibold">
+              Hotel Name
+            </Label>
+            <Input
+              id="edit-hotel-name"
+              data-ocid="owner_dashboard.edit.hotel_name_input"
+              value={hotelName}
+              onChange={(e) => setHotelName(e.target.value)}
+              placeholder="Your hotel name"
+              required
+              className="rounded-xl border-input"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-address" className="text-sm font-semibold">
+              Address
+            </Label>
+            <Input
+              id="edit-address"
+              data-ocid="owner_dashboard.edit.address_input"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Full hotel address"
+              className="rounded-xl border-input"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-description" className="text-sm font-semibold">
+              Description
+            </Label>
+            <Textarea
+              id="edit-description"
+              data-ocid="owner_dashboard.edit.description_textarea"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe your hotel..."
+              rows={4}
+              className="rounded-xl border-input resize-none"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="edit-contact-info"
+              className="text-sm font-semibold"
+            >
+              Contact Information
+            </Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                id="edit-contact-info"
+                data-ocid="owner_dashboard.edit.contact_input"
+                value={contactInfo}
+                onChange={(e) => setContactInfo(e.target.value)}
+                placeholder="Phone or email for guests to contact hotel"
+                className="rounded-xl border-input pl-9"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This will be shown to guests as the hotel contact.
+            </p>
+          </div>
+
+          <Button
+            data-ocid="owner_dashboard.edit.details.submit_button"
+            type="submit"
+            disabled={isSubmittingDetails}
+            className="w-full bg-[oklch(0.52_0.22_25.5)] hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl transition-all duration-200"
+          >
+            {isSubmittingDetails ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Submit Update Request
+              </>
+            )}
+          </Button>
+        </form>
+      </div>
+
+      {/* ── Section B: Pricing & Availability ───────────────────────────── */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
+            <span className="text-purple-600 font-extrabold text-sm">₹</span>
+          </div>
+          <h3 className="font-display font-bold text-base text-foreground">
+            Pricing &amp; Discount
+          </h3>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-amber-800 text-sm">
+            Pricing changes require{" "}
+            <span className="font-semibold">admin approval</span> before going
+            live.
+          </p>
+        </div>
+
+        {pricingSuccess && (
+          <motion.div
+            data-ocid="owner_dashboard.edit.pricing.success_state"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5"
+          >
+            <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+            <p className="text-green-800 text-sm font-semibold">
+              Pricing update submitted — pending admin approval.
+            </p>
+          </motion.div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setPricingSuccess(false);
+            submitPricingUpdate();
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-price" className="text-sm font-semibold">
+                Price per Night (₹)
+              </Label>
+              <Input
+                id="edit-price"
+                data-ocid="owner_dashboard.edit.price_input"
+                type="number"
+                min={1}
+                value={pricePerNight}
+                onChange={(e) => {
+                  setPricePerNight(e.target.value);
+                  setPricingSuccess(false);
+                }}
+                placeholder="e.g. 1500"
+                required
+                className="rounded-xl border-input"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-discount" className="text-sm font-semibold">
+                Discount (%)
+              </Label>
+              <Input
+                id="edit-discount"
+                data-ocid="owner_dashboard.edit.discount_input"
+                type="number"
+                min={0}
+                max={100}
+                value={discountPct}
+                onChange={(e) => {
+                  setDiscountPct(e.target.value);
+                  setPricingSuccess(false);
+                }}
+                placeholder="e.g. 10"
+                className="rounded-xl border-input"
+              />
+              <p className="text-xs text-muted-foreground">0 = no discount</p>
+            </div>
+          </div>
+
+          {/* Price preview */}
+          {pricePerNight && Number(pricePerNight) > 0 && (
+            <div className="bg-muted/30 border border-border rounded-xl p-4">
+              <p className="text-sm text-muted-foreground mb-1">
+                Price preview:
+              </p>
+              <div className="flex items-center gap-3">
+                {discountedPrice !== null ? (
+                  <>
+                    <span className="text-xl font-display font-extrabold text-foreground">
+                      ₹{discountedPrice.toLocaleString("en-IN")}
+                    </span>
+                    <span className="text-sm text-muted-foreground line-through">
+                      ₹{Number(pricePerNight).toLocaleString("en-IN")}
+                    </span>
+                    <Badge className="bg-green-50 text-green-700 border-green-200 font-semibold text-xs">
+                      {discountPct}% off
+                    </Badge>
+                  </>
+                ) : (
+                  <span className="text-xl font-display font-extrabold text-foreground">
+                    ₹{Number(pricePerNight).toLocaleString("en-IN")}
+                  </span>
+                )}
+                <span className="text-sm text-muted-foreground">per night</span>
+              </div>
+            </div>
+          )}
+
+          <Button
+            data-ocid="owner_dashboard.edit.pricing.submit_button"
+            type="submit"
+            disabled={isSubmittingPricing}
+            className="w-full bg-[oklch(0.52_0.22_25.5)] hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl transition-all duration-200"
+          >
+            {isSubmittingPricing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Submit Pricing Update
+              </>
+            )}
+          </Button>
+        </form>
+      </div>
+
+      {/* ── Section C: Hotel Images ──────────────────────────────────────── */}
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 bg-teal-50 rounded-lg flex items-center justify-center">
+            <Camera className="w-4 h-4 text-teal-600" />
+          </div>
+          <h3 className="font-display font-bold text-base text-foreground">
+            Hotel Images
+          </h3>
+          <Badge className="bg-muted text-muted-foreground border-border font-semibold text-xs ml-auto">
+            {totalImageCount}/5
+          </Badge>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-amber-800 text-sm">
+            Image changes require{" "}
+            <span className="font-semibold">admin approval</span> before going
+            live.
+          </p>
+        </div>
+
+        {imagesSaved && (
+          <motion.div
+            data-ocid="owner_dashboard.edit.images.success_state"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-2.5 mb-5"
+          >
+            <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+            <p className="text-green-800 text-sm font-semibold">
+              Image update submitted — pending admin approval.
+            </p>
+          </motion.div>
+        )}
+
+        {/* Current images grid */}
+        {imageUrls.length === 0 && imageFiles.length === 0 ? (
+          <div
+            data-ocid="owner_dashboard.edit.images.empty_state"
+            className="text-center py-10 bg-muted/20 border border-dashed border-border rounded-2xl mb-4"
+          >
+            <Camera className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground font-medium">
+              No images yet. Upload your first photo below.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+            {/* Existing saved images */}
+            {imageUrls.map((url, idx) => (
+              <motion.div
+                key={url}
+                data-ocid={`owner_dashboard.edit.image.item.${idx + 1}`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="relative group aspect-video bg-muted rounded-xl overflow-hidden"
+              >
+                <img
+                  src={url}
+                  alt={`Hotel view ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200 rounded-xl" />
+                <button
+                  type="button"
+                  data-ocid={`owner_dashboard.edit.image.delete_button.${idx + 1}`}
+                  onClick={() => handleRemoveExistingImage(url)}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-700 shadow-md"
+                  aria-label={`Remove image ${idx + 1}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+                <span className="absolute bottom-2 left-2 text-[10px] bg-black/50 text-white rounded px-1.5 py-0.5 font-semibold">
+                  Saved
+                </span>
+              </motion.div>
+            ))}
+
+            {/* New pending images */}
+            {imageFiles.map((imgFile, idx) => (
+              <motion.div
+                key={imgFile.id}
+                data-ocid={`owner_dashboard.edit.new_image.item.${idx + 1}`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative group aspect-video bg-muted rounded-xl overflow-hidden"
+              >
+                <img
+                  src={imgFile.previewUrl}
+                  alt={`New hotel view ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                {imgFile.status === "uploading" && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  </div>
+                )}
+                {imgFile.status === "done" && (
+                  <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center rounded-xl">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  </div>
+                )}
+                {imgFile.status === "error" && (
+                  <div className="absolute inset-0 bg-red-500/20 flex items-center justify-center rounded-xl">
+                    <XCircle className="w-6 h-6 text-red-600" />
+                  </div>
+                )}
+                {imgFile.status === "idle" && (
+                  <>
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200 rounded-xl" />
+                    <button
+                      type="button"
+                      data-ocid={`owner_dashboard.edit.new_image.delete_button.${idx + 1}`}
+                      onClick={() => handleRemoveNewImage(imgFile.id)}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-700 shadow-md"
+                      aria-label={`Remove new image ${idx + 1}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+                <span className="absolute bottom-2 left-2 text-[10px] bg-black/50 text-white rounded px-1.5 py-0.5 font-semibold">
+                  New
+                </span>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* Upload button */}
+        {totalImageCount < 5 && (
+          <div className="mb-5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) {
+                  handleImageFileAdd(e.target.files);
+                  e.target.value = "";
+                }
+              }}
+            />
+            <button
+              type="button"
+              data-ocid="owner_dashboard.edit.images.upload_button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-teal-300 hover:border-teal-400 bg-teal-50/50 hover:bg-teal-50 rounded-xl py-6 flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer group"
+            >
+              <div className="w-10 h-10 bg-teal-100 group-hover:bg-teal-200 rounded-full flex items-center justify-center transition-colors">
+                <ImagePlus className="w-5 h-5 text-teal-600" />
+              </div>
+              <p className="text-sm font-semibold text-teal-700">
+                Click to upload images
+              </p>
+              <p className="text-xs text-teal-500">
+                JPG or PNG · max 2MB each · up to {5 - totalImageCount} more
+              </p>
+            </button>
+          </div>
+        )}
+
+        {/* Save images button */}
+        <Button
+          data-ocid="owner_dashboard.edit.images.save_button"
+          type="button"
+          disabled={
+            isUploadingImages ||
+            (imageFiles.length === 0 &&
+              imageUrls.length === hotel.imageUrls.length)
+          }
+          onClick={handleSaveImages}
+          className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-5 rounded-xl transition-all duration-200 disabled:opacity-50"
+        >
+          {isUploadingImages ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Uploading & Saving...
+            </>
+          ) : (
+            <>
+              <Send className="mr-2 h-4 w-4" />
+              Submit Image Update
+            </>
+          )}
+        </Button>
+
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          Image changes will be reviewed by admin before going live.
+        </p>
+      </div>
     </motion.div>
   );
 }
@@ -1409,6 +2216,11 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
       id: "rules",
       label: "Rules",
       icon: <ScrollText className="w-4 h-4" />,
+    },
+    {
+      id: "edit",
+      label: "Edit Property",
+      icon: <PencilLine className="w-4 h-4" />,
     },
   ];
 
@@ -1531,6 +2343,7 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                         onGoToBookings={() => setActiveTab("bookings")}
                         onGoToCalendar={() => setActiveTab("calendar")}
                         onGoToRules={() => setActiveTab("rules")}
+                        onGoToEdit={() => setActiveTab("edit")}
                       />
                     </motion.div>
                   )}
@@ -1573,6 +2386,16 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                   {activeTab === "rules" && (
                     <motion.div key="rules">
                       <RulesTab
+                        hotel={hotel}
+                        actor={actor}
+                        onRefresh={handleRefreshAll}
+                      />
+                    </motion.div>
+                  )}
+
+                  {activeTab === "edit" && (
+                    <motion.div key="edit">
+                      <EditPropertyTab
                         hotel={hotel}
                         actor={actor}
                         onRefresh={handleRefreshAll}
