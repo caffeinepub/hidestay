@@ -163,6 +163,12 @@ function OverviewTab({
                 </span>
               )}
             </div>
+            {hotel.ownerEmail && (
+              <p className="mt-2 text-xs text-white/55 flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-white/40" />
+                Owner: {hotel.ownerEmail}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-0.5 bg-white/15 rounded-xl px-3 py-2 shrink-0">
             {[1, 2, 3, 4, 5].map((i) => (

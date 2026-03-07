@@ -131,9 +131,11 @@ export interface HotelQueryParams {
 }
 export interface Hotel {
     id: bigint;
+    ownerEmail: string;
     starRating: bigint;
     imageUrls: Array<string>;
     city: string;
+    ownerPrincipal: string;
     pricePerNight: bigint;
     name: string;
     description: string;
@@ -231,6 +233,7 @@ export interface backendInterface {
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
     getOwnerBookings(): Promise<Array<Booking>>;
     getOwnerHotel(): Promise<Hotel>;
+    getOwnerHotelByEmail(email: string): Promise<Hotel>;
     getOwnerRoomInventory(): Promise<RoomInventory>;
     getPropertyListings(): Promise<Array<PropertyListing>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
@@ -718,6 +721,20 @@ export class Backend implements backendInterface {
             return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
         }
     }
+    async getOwnerHotelByEmail(arg0: string): Promise<Hotel> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getOwnerHotelByEmail(arg0);
+                return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getOwnerHotelByEmail(arg0);
+            return from_candid_Hotel_n19(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getOwnerRoomInventory(): Promise<RoomInventory> {
         if (this.processError) {
             try {
@@ -1090,9 +1107,11 @@ function from_candid_record_n12(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }
 function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     id: bigint;
+    ownerEmail: string;
     starRating: bigint;
     imageUrls: Array<string>;
     city: string;
+    ownerPrincipal: string;
     pricePerNight: bigint;
     name: string;
     description: string;
@@ -1103,9 +1122,11 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
     rules: string;
 }): {
     id: bigint;
+    ownerEmail: string;
     starRating: bigint;
     imageUrls: Array<string>;
     city: string;
+    ownerPrincipal: string;
     pricePerNight: bigint;
     name: string;
     description: string;
@@ -1117,9 +1138,11 @@ function from_candid_record_n20(_uploadFile: (file: ExternalBlob) => Promise<Uin
 } {
     return {
         id: value.id,
+        ownerEmail: value.ownerEmail,
         starRating: value.starRating,
         imageUrls: value.imageUrls,
         city: value.city,
+        ownerPrincipal: value.ownerPrincipal,
         pricePerNight: value.pricePerNight,
         name: value.name,
         description: value.description,

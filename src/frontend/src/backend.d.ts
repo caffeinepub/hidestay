@@ -42,9 +42,11 @@ export interface HotelQueryParams {
 }
 export interface Hotel {
     id: bigint;
+    ownerEmail: string;
     starRating: bigint;
     imageUrls: Array<string>;
     city: string;
+    ownerPrincipal: string;
     pricePerNight: bigint;
     name: string;
     description: string;
@@ -131,6 +133,7 @@ export interface backendInterface {
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
     getOwnerBookings(): Promise<Array<Booking>>;
     getOwnerHotel(): Promise<Hotel>;
+    getOwnerHotelByEmail(email: string): Promise<Hotel>;
     getOwnerRoomInventory(): Promise<RoomInventory>;
     getPropertyListings(): Promise<Array<PropertyListing>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;

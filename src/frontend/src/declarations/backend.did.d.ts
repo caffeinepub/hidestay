@@ -38,9 +38,11 @@ export interface CustomerProfile {
 }
 export interface Hotel {
   'id' : bigint,
+  'ownerEmail' : string,
   'starRating' : bigint,
   'imageUrls' : Array<string>,
   'city' : string,
+  'ownerPrincipal' : string,
   'pricePerNight' : bigint,
   'name' : string,
   'description' : string,
@@ -170,6 +172,7 @@ export interface _SERVICE {
   'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getOwnerBookings' : ActorMethod<[], Array<Booking>>,
   'getOwnerHotel' : ActorMethod<[], Hotel>,
+  'getOwnerHotelByEmail' : ActorMethod<[string], Hotel>,
   'getOwnerRoomInventory' : ActorMethod<[], RoomInventory>,
   'getPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,

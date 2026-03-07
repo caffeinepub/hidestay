@@ -12,55 +12,173 @@ module {
     amenities : [Text];
     address : Text;
     imageIndex : Nat;
-    approvalStatus : {
-      #Approved;
-      #Pending;
-      #Rejected;
-    };
-    rules : Text;
-  };
-
-  type NewHotel = {
-    id : Nat;
-    name : Text;
-    city : Text;
-    description : Text;
-    starRating : Nat;
-    pricePerNight : Int;
-    amenities : [Text];
-    address : Text;
-    imageIndex : Nat;
-    approvalStatus : {
-      #Approved;
-      #Pending;
-      #Rejected;
-    };
-    rules : Text;
     imageUrls : [Text];
+    approvalStatus : { #Approved; #Pending; #Rejected };
+    rules : Text;
   };
 
-  type OldActor = { hotels : Map.Map<Nat, OldHotel> };
-  type NewActor = { hotels : Map.Map<Nat, NewHotel> };
+  type OldActor = {
+    hotels : Map.Map<Nat, OldHotel>;
+    hotelOwners : Map.Map<Principal, Nat>;
+    roomInventory : Map.Map<Nat, { hotelId : Nat; roomType : Text; totalRooms : Nat; availableRooms : Nat }>;
+    propertyListings : Map.Map<Nat, {
+      id : Nat;
+      ownerName : Text;
+      ownerPhone : Text;
+      ownerEmail : Text;
+      hotelName : Text;
+      city : Text;
+      address : Text;
+      pricePerNight : Int;
+      roomType : Text;
+      amenities : [Text];
+      description : Text;
+      subscriptionPlan : Text;
+      status : { #PendingApproval; #Approved; #Rejected };
+      submittedAt : Int;
+      submittedBy : Principal;
+      imageUrls : [Text];
+      kycDocumentUrl : Text;
+      rules : Text;
+    }>;
+    bookings : Map.Map<Nat, {
+      id : Nat;
+      hotelId : Nat;
+      guestName : Text;
+      guestEmail : Text;
+      phone : Text;
+      checkIn : Text;
+      checkOut : Text;
+      guestCount : Nat;
+      status : { #Confirmed; #Pending; #Cancelled };
+      created : Int;
+      owner : Principal;
+    }>;
+    blockedDates : Map.Map<Nat, {
+      id : Nat;
+      hotelId : Nat;
+      date : Text;
+      reason : Text;
+    }>;
+    customerProfiles : Map.Map<Principal, {
+      name : Text;
+      email : Text;
+      mobile : Text;
+      passwordHash : Text;
+      memberSince : Int;
+    }>;
+    emailToPrincipal : Map.Map<Text, Principal>;
+    mobileToPrincipal : Map.Map<Text, Principal>;
+    adminLockedAccounts : Map.Map<Principal, Bool>;
+    adminLoginAttempts : Map.Map<Principal, Nat>;
+    adminOtps : Map.Map<Principal, { code : Text; expiresAt : Int }>;
+    userProfiles : Map.Map<Principal, { name : Text; email : Text; phone : Text }>;
+    nextHotelId : Nat;
+    nextBookingId : Nat;
+    nextPropertyListingId : Nat;
+    nextBlockedDateId : Nat;
+    MAX_ADMIN_LOGIN_ATTEMPTS : Nat;
+  };
+
+  type NewActor = {
+    hotels : Map.Map<Nat, {
+      id : Nat;
+      name : Text;
+      city : Text;
+      description : Text;
+      starRating : Nat;
+      pricePerNight : Int;
+      amenities : [Text];
+      address : Text;
+      imageIndex : Nat;
+      imageUrls : [Text];
+      approvalStatus : { #Approved; #Pending; #Rejected };
+      rules : Text;
+      ownerEmail : Text;
+      ownerPrincipal : Text;
+    }>;
+    hotelOwners : Map.Map<Principal, Nat>;
+    roomInventory : Map.Map<Nat, { hotelId : Nat; roomType : Text; totalRooms : Nat; availableRooms : Nat }>;
+    propertyListings : Map.Map<Nat, {
+      id : Nat;
+      ownerName : Text;
+      ownerPhone : Text;
+      ownerEmail : Text;
+      hotelName : Text;
+      city : Text;
+      address : Text;
+      pricePerNight : Int;
+      roomType : Text;
+      amenities : [Text];
+      description : Text;
+      subscriptionPlan : Text;
+      status : { #PendingApproval; #Approved; #Rejected };
+      submittedAt : Int;
+      submittedBy : Principal;
+      imageUrls : [Text];
+      kycDocumentUrl : Text;
+      rules : Text;
+    }>;
+    bookings : Map.Map<Nat, {
+      id : Nat;
+      hotelId : Nat;
+      guestName : Text;
+      guestEmail : Text;
+      phone : Text;
+      checkIn : Text;
+      checkOut : Text;
+      guestCount : Nat;
+      status : { #Confirmed; #Pending; #Cancelled };
+      created : Int;
+      owner : Principal;
+    }>;
+    blockedDates : Map.Map<Nat, {
+      id : Nat;
+      hotelId : Nat;
+      date : Text;
+      reason : Text;
+    }>;
+    customerProfiles : Map.Map<Principal, {
+      name : Text;
+      email : Text;
+      mobile : Text;
+      passwordHash : Text;
+      memberSince : Int;
+    }>;
+    emailToPrincipal : Map.Map<Text, Principal>;
+    mobileToPrincipal : Map.Map<Text, Principal>;
+    adminLockedAccounts : Map.Map<Principal, Bool>;
+    adminLoginAttempts : Map.Map<Principal, Nat>;
+    adminOtps : Map.Map<Principal, { code : Text; expiresAt : Int }>;
+    userProfiles : Map.Map<Principal, { name : Text; email : Text; phone : Text }>;
+    nextHotelId : Nat;
+    nextBookingId : Nat;
+    nextPropertyListingId : Nat;
+    nextBlockedDateId : Nat;
+    MAX_ADMIN_LOGIN_ATTEMPTS : Nat;
+  };
 
   public func run(old : OldActor) : NewActor {
-    let newHotels = old.hotels.map<Nat, OldHotel, NewHotel>(
-      func(_st, oldHotel) {
-        {
-          id = oldHotel.id;
-          name = oldHotel.name;
-          city = oldHotel.city;
-          description = oldHotel.description;
-          starRating = oldHotel.starRating;
-          pricePerNight = oldHotel.pricePerNight;
-          amenities = oldHotel.amenities;
-          address = oldHotel.address;
-          imageIndex = oldHotel.imageIndex;
-          approvalStatus = oldHotel.approvalStatus;
-          rules = oldHotel.rules;
-          imageUrls = [];
-        };
+    let newHotels = old.hotels.map<Nat, OldHotel, {
+      id : Nat;
+      name : Text;
+      city : Text;
+      description : Text;
+      starRating : Nat;
+      pricePerNight : Int;
+      amenities : [Text];
+      address : Text;
+      imageIndex : Nat;
+      imageUrls : [Text];
+      approvalStatus : { #Approved; #Pending; #Rejected };
+      rules : Text;
+      ownerEmail : Text;
+      ownerPrincipal : Text;
+    }>(
+      func(_id, oldHotel) {
+        { oldHotel with ownerEmail = ""; ownerPrincipal = "" };
       }
     );
-    { hotels = newHotels };
+    { old with hotels = newHotels };
   };
 };

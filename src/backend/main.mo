@@ -37,6 +37,8 @@ actor {
     imageUrls : [Text];
     approvalStatus : HotelApprovalStatus;
     rules : Text;
+    ownerEmail : Text;
+    ownerPrincipal : Text;
   };
 
   let hotels = Map.empty<Nat, Hotel>();
@@ -69,8 +71,11 @@ actor {
 
   func isHotelOwner(caller : Principal) : Bool {
     switch (hotelOwners.get(caller)) {
-      case (null) { false };
       case (?_) { true };
+      case (null) {
+        let principalStr = caller.toText();
+        hotels.values().toArray().any(func(h) { h.ownerPrincipal == principalStr });
+      };
     };
   };
 
@@ -248,6 +253,8 @@ actor {
       imageUrls;
       approvalStatus = #Approved;
       rules;
+      ownerEmail = "";
+      ownerPrincipal = "";
     };
     hotels.add(hotelId, newHotel);
 
@@ -312,6 +319,8 @@ actor {
           imageUrls = hotel.imageUrls;
           approvalStatus = #Approved;
           rules = hotel.rules;
+          ownerEmail = hotel.ownerEmail;
+          ownerPrincipal = hotel.ownerPrincipal;
         };
         hotels.add(id, updatedHotel);
       };
@@ -339,6 +348,8 @@ actor {
           imageUrls = hotel.imageUrls;
           approvalStatus = #Rejected;
           rules = hotel.rules;
+          ownerEmail = hotel.ownerEmail;
+          ownerPrincipal = hotel.ownerPrincipal;
         };
         hotels.add(id, updatedHotel);
       };
@@ -366,6 +377,8 @@ actor {
           imageUrls = hotel.imageUrls;
           approvalStatus = #Rejected;
           rules = hotel.rules;
+          ownerEmail = hotel.ownerEmail;
+          ownerPrincipal = hotel.ownerPrincipal;
         };
         hotels.add(id, updatedHotel);
       };
@@ -412,6 +425,8 @@ actor {
           imageUrls = listing.imageUrls;
           approvalStatus = #Approved;
           rules = listing.rules;
+          ownerEmail = listing.ownerEmail;
+          ownerPrincipal = listing.submittedBy.toText();
         };
         hotels.add(hotelId, newHotel);
         nextHotelId += 1;
@@ -940,21 +955,27 @@ actor {
   };
 
   // Hotel owner endpoints
-  public query ({ caller }) func getOwnerHotel() : async Hotel {
+  public shared ({ caller }) func getOwnerHotel() : async Hotel {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
-    };
-
-    if (not isHotelOwner(caller)) {
       Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
     switch (hotelOwners.get(caller)) {
-      case (null) { Runtime.trap("No hotel associated with caller") };
       case (?hotelId) {
         switch (hotels.get(hotelId)) {
           case (null) { Runtime.trap("Hotel not found") };
           case (?hotel) { hotel };
+        };
+      };
+      case (null) {
+        let principalStr = caller.toText();
+        let ownedHotel = hotels.values().toArray().find(func(h) { h.ownerPrincipal == principalStr });
+        switch (ownedHotel) {
+          case (null) { Runtime.trap("Unauthorized: Only hotel owners can access this") };
+          case (?hotel) {
+            hotelOwners.add(caller, hotel.id);
+            return hotel;
+          };
         };
       };
     };
@@ -962,7 +983,7 @@ actor {
 
   public query ({ caller }) func getOwnerBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
     if (not isHotelOwner(caller)) {
@@ -980,13 +1001,24 @@ actor {
     };
   };
 
+  // Admin-only endpoint to get a hotel by owner email
+  public query ({ caller }) func getOwnerHotelByEmail(email : Text) : async Hotel {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can use this endpoint");
+    };
+    switch (hotels.values().toArray().find(func(h) { h.ownerEmail == email })) {
+      case (?hotel) { hotel };
+      case (null) { Runtime.trap("Hotel not found for this owner email") };
+    };
+  };
+
   public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can update booking status");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can update booking status");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1022,6 +1054,7 @@ actor {
                 switch (oldStatus, newStatus) {
                   case (#Pending, #Cancelled) { availableChange := 1 };
                   case (#Confirmed, #Cancelled) { availableChange := 1 };
+                  case (_) {};
                 };
 
                 if (availableChange > 0) {
@@ -1043,7 +1076,7 @@ actor {
 
   public query ({ caller }) func getOwnerRoomInventory() : async RoomInventory {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1063,11 +1096,11 @@ actor {
 
   public shared ({ caller }) func updateRoomInventory(totalRooms : Nat, availableRooms : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can update inventory");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can update inventory");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1091,11 +1124,11 @@ actor {
 
   public query ({ caller }) func getBlockedDates() : async [BlockedDate] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can access blocked dates");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can access blocked dates");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1108,11 +1141,11 @@ actor {
 
   public shared ({ caller }) func blockDate(date : Text, reason : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can block dates");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can block dates");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1134,11 +1167,11 @@ actor {
 
   public shared ({ caller }) func unblockDate(blockedDateId : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can unblock dates");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can unblock dates");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1159,11 +1192,11 @@ actor {
 
   public shared ({ caller }) func updateHotelRules(rules : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Must be logged in to update rules");
+      Runtime.trap("Unauthorized: Only hotel owners can update rules");
     };
 
     if (not isHotelOwner(caller)) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+      Runtime.trap("Unauthorized: Only hotel owners can update rules");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1185,6 +1218,8 @@ actor {
               imageUrls = hotel.imageUrls;
               approvalStatus = hotel.approvalStatus;
               rules;
+              ownerEmail = hotel.ownerEmail;
+              ownerPrincipal = hotel.ownerPrincipal;
             };
             hotels.add(hotelId, updatedHotel);
           };

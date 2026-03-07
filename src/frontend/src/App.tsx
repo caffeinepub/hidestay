@@ -1403,6 +1403,7 @@ interface ListPropertyModalProps {
   open: boolean;
   onClose: () => void;
   actor: import("./backend").backendInterface | null;
+  onOpenAuthModal?: () => void;
 }
 
 interface ImageFile {
@@ -1416,9 +1417,15 @@ interface ImageFile {
 const AMENITY_OPTIONS = ["WiFi", "AC", "Parking"];
 const ROOM_TYPES = ["Standard", "Deluxe", "Suite"];
 
-function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
-  const { identity, login, isLoggingIn } = useInternetIdentity();
-  const isLoggedIn = !!identity;
+function ListPropertyModal({
+  open,
+  onClose,
+  actor,
+  onOpenAuthModal,
+}: ListPropertyModalProps) {
+  const { isAuthenticated: isLoggedIn, profile: customerProfile } =
+    useCustomerAuth();
+  const { identity } = useInternetIdentity();
 
   const [submittedId, setSubmittedId] = useState<bigint | null>(null);
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
@@ -1451,6 +1458,18 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
 
   const updateField = (field: string, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
+
+  // Auto-fill owner details from customer profile when modal opens
+  useEffect(() => {
+    if (open && customerProfile) {
+      setForm((prev) => ({
+        ...prev,
+        ownerName: prev.ownerName || customerProfile.name || "",
+        ownerEmail: prev.ownerEmail || customerProfile.email || "",
+        ownerPhone: prev.ownerPhone || customerProfile.phone || "",
+      }));
+    }
+  }, [open, customerProfile]);
 
   const toggleAmenity = (amenity: string) =>
     setForm((prev) => ({
@@ -1747,26 +1766,19 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
                 Sign In Required
               </h3>
               <p className="text-muted-foreground text-sm mb-6 max-w-xs mx-auto">
-                Please log in with Internet Identity to submit your property
-                listing.
+                Only logged-in hotel owners can list a property. Please sign in
+                or create an account to continue.
               </p>
               <Button
                 data-ocid="list_property.login_button"
-                onClick={() => login()}
-                disabled={isLoggingIn}
+                onClick={() => {
+                  onClose();
+                  if (onOpenAuthModal) onOpenAuthModal();
+                }}
                 className="bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl px-8 py-5"
               >
-                {isLoggingIn ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="mr-2 h-4 w-4" />
-                    Sign In to Continue
-                  </>
-                )}
+                <LogIn className="mr-2 h-4 w-4" />
+                Sign In / Sign Up
               </Button>
             </motion.div>
           ) : (
@@ -5452,6 +5464,7 @@ function AppInner() {
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
+  const [pendingListProperty, setPendingListProperty] = useState(false);
   const [profilePageOpen, setProfilePageOpen] = useState(false);
   const [superAdminOpen, setSuperAdminOpen] = useState(
     () => window.location.pathname === "/admin",
@@ -5596,6 +5609,15 @@ function AppInner() {
     }
   }, [isAuthenticated]);
 
+  // After login, open List Property modal if there was a pending intent
+  useEffect(() => {
+    if (isAuthenticated && pendingListProperty) {
+      setPendingListProperty(false);
+      setAuthModalOpen(false);
+      setListPropertyModalOpen(true);
+    }
+  }, [isAuthenticated, pendingListProperty]);
+
   // ── Admin route guard: redirect unauthorized users away from /admin ────────
   useEffect(() => {
     if (actorLoading || !actor) return;
@@ -5614,7 +5636,14 @@ function AppInner() {
       {/* Header — always visible */}
       <Header
         onLoginClick={() => setAuthModalOpen(true)}
-        onListPropertyClick={() => setListPropertyModalOpen(true)}
+        onListPropertyClick={() => {
+          if (isAuthenticated) {
+            setListPropertyModalOpen(true);
+          } else {
+            setPendingListProperty(true);
+            setAuthModalOpen(true);
+          }
+        }}
         onAdminClick={openAdminPanel}
         onMyBookingsClick={() => setMyBookingsPanelOpen(true)}
         onOwnerDashboardClick={() => setOwnerDashboardOpen(true)}
@@ -5850,6 +5879,11 @@ function AppInner() {
         open={listPropertyModalOpen}
         onClose={() => setListPropertyModalOpen(false)}
         actor={actor}
+        onOpenAuthModal={() => {
+          setListPropertyModalOpen(false);
+          setPendingListProperty(true);
+          setAuthModalOpen(true);
+        }}
       />
 
       {/* Super Admin Password Auth Gate */}

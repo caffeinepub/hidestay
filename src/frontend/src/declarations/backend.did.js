@@ -67,9 +67,11 @@ export const HotelApprovalStatus = IDL.Variant({
 });
 export const Hotel = IDL.Record({
   'id' : IDL.Nat,
+  'ownerEmail' : IDL.Text,
   'starRating' : IDL.Nat,
   'imageUrls' : IDL.Vec(IDL.Text),
   'city' : IDL.Text,
+  'ownerPrincipal' : IDL.Text,
   'pricePerNight' : IDL.Int,
   'name' : IDL.Text,
   'description' : IDL.Text,
@@ -189,7 +191,8 @@ export const idlService = IDL.Service({
   'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
   'getMyPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
   'getOwnerBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
-  'getOwnerHotel' : IDL.Func([], [Hotel], ['query']),
+  'getOwnerHotel' : IDL.Func([], [Hotel], []),
+  'getOwnerHotelByEmail' : IDL.Func([IDL.Text], [Hotel], ['query']),
   'getOwnerRoomInventory' : IDL.Func([], [RoomInventory], ['query']),
   'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
   'getUserProfile' : IDL.Func(
@@ -303,9 +306,11 @@ export const idlFactory = ({ IDL }) => {
   });
   const Hotel = IDL.Record({
     'id' : IDL.Nat,
+    'ownerEmail' : IDL.Text,
     'starRating' : IDL.Nat,
     'imageUrls' : IDL.Vec(IDL.Text),
     'city' : IDL.Text,
+    'ownerPrincipal' : IDL.Text,
     'pricePerNight' : IDL.Int,
     'name' : IDL.Text,
     'description' : IDL.Text,
@@ -429,7 +434,8 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'getOwnerBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
-    'getOwnerHotel' : IDL.Func([], [Hotel], ['query']),
+    'getOwnerHotel' : IDL.Func([], [Hotel], []),
+    'getOwnerHotelByEmail' : IDL.Func([IDL.Text], [Hotel], ['query']),
     'getOwnerRoomInventory' : IDL.Func([], [RoomInventory], ['query']),
     'getPropertyListings' : IDL.Func([], [IDL.Vec(PropertyListing)], ['query']),
     'getUserProfile' : IDL.Func(
