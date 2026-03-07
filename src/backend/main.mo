@@ -6,233 +6,18 @@ import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Time "mo:core/Time";
-import Iter "mo:core/Iter";
 import Nat "mo:core/Nat";
+import Int "mo:core/Int";
+import Migration "migration";
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
 
-
-
+(with migration = Migration.run)
 actor {
   include MixinStorage();
-
-  type OtpEntry = {
-    code : Text;
-    expiresAt : Int;
-  };
-
-  var otpCounter = 0;
-  let adminOtps = Map.empty<Principal, OtpEntry>();
-
-  let adminLoginAttempts = Map.empty<Principal, Nat>();
-  let adminLockedAccounts = Map.empty<Principal, Bool>();
-  let MAX_ADMIN_LOGIN_ATTEMPTS : Nat = 5;
-
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
-
-  public type UserProfile = {
-    name : Text;
-    email : Text;
-    phone : Text;
-  };
-
-  let userProfiles = Map.empty<Principal, UserProfile>();
-
-  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can access profiles");
-    };
-    userProfiles.get(caller);
-  };
-
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
-    userProfiles.get(user);
-  };
-
-  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
-    userProfiles.add(caller, profile);
-  };
-
-  public type CustomerProfile = {
-    name : Text;
-    email : Text;
-    mobile : Text;
-    passwordHash : Text;
-    memberSince : Int;
-  };
-
-  let customerProfiles = Map.empty<Principal, CustomerProfile>();
-  let emailToPrincipal = Map.empty<Text, Principal>();
-  let mobileToPrincipal = Map.empty<Text, Principal>();
-
-  public shared ({ caller }) func registerCustomer(
-    name : Text,
-    email : Text,
-    mobile : Text,
-    password : Text,
-  ) : async {
-    #ok : Text;
-    #error : Text;
-  } {
-    // No authorization check - guests can register
-
-    if (emailToPrincipal.containsKey(email)) {
-      return #error("Email already registered");
-    };
-
-    if (mobile != "" and mobileToPrincipal.containsKey(mobile)) {
-      return #error("Mobile number already registered");
-    };
-
-    let profile : CustomerProfile = {
-      name;
-      email;
-      mobile;
-      passwordHash = password;
-      memberSince = 2024_01_01_0000;
-    };
-
-    customerProfiles.add(caller, profile);
-    emailToPrincipal.add(email, caller);
-
-    if (mobile != "") {
-      mobileToPrincipal.add(mobile, caller);
-    };
-
-    #ok("Registration successful");
-  };
-
-  public shared ({ caller }) func loginCustomer(email : Text, password : Text) : async {
-    #ok : Text;
-    #error : Text;
-  } {
-    // No authorization check - guests can login
-
-    switch (emailToPrincipal.get(email)) {
-      case (null) { #error("Invalid credentials") };
-      case (?principal) {
-        switch (customerProfiles.get(principal)) {
-          case (null) { #error("Profile not found") };
-          case (?profile) {
-            if (profile.passwordHash == password) {
-              #ok("Login successful");
-            } else {
-              #error("Invalid password");
-            };
-          };
-        };
-      };
-    };
-  };
-
-  public query ({ caller }) func getMyCustomerProfile() : async ?CustomerProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can access customer profiles");
-    };
-    customerProfiles.get(caller);
-  };
-
-  public shared ({ caller }) func updateCustomerProfile(
-    name : Text,
-    email : Text,
-    mobile : Text,
-  ) : async {
-    #ok : Text;
-    #error : Text;
-  } {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can update customer profiles");
-    };
-
-    switch (customerProfiles.get(caller)) {
-      case (null) { #error("Profile not found") };
-      case (?profile) {
-        if (profile.email != email and emailToPrincipal.containsKey(email)) {
-          return #error("Email already in use");
-        };
-
-        if (mobile != "" and (mobile != profile.mobile)) {
-          switch (mobileToPrincipal.get(mobile)) {
-            case (?existingPrincipal) {
-              if (existingPrincipal != caller) {
-                return #error("Mobile number already in use by another profile");
-              };
-            };
-            case (null) {};
-          };
-        };
-
-        let updated : CustomerProfile = {
-          name;
-          email;
-          mobile;
-          passwordHash = profile.passwordHash;
-          memberSince = profile.memberSince;
-        };
-        customerProfiles.add(caller, updated);
-
-        let currentEmail = profile.email;
-        if (currentEmail != email and emailToPrincipal.get(currentEmail) == ?caller) {
-          emailToPrincipal.remove(currentEmail);
-        };
-
-        emailToPrincipal.add(email, caller);
-
-        let currentMobile = profile.mobile;
-        if (mobile != currentMobile) {
-          if (currentMobile != "" and mobileToPrincipal.get(currentMobile) == ?caller) {
-            mobileToPrincipal.remove(currentMobile);
-          };
-          if (mobile != "" and (mobileToPrincipal.get(mobile) == null or mobileToPrincipal.get(mobile) == ?caller)) {
-            mobileToPrincipal.add(mobile, caller);
-          };
-        };
-
-        #ok("Profile updated successfully");
-      };
-    };
-  };
-
-  public shared ({ caller }) func changePassword(
-    oldPassword : Text,
-    newPassword : Text,
-  ) : async {
-    #ok : Text;
-    #error : Text;
-  } {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only authenticated users can change passwords");
-    };
-
-    switch (customerProfiles.get(caller)) {
-      case (null) { #error("Profile not found") };
-      case (?profile) {
-        if (profile.passwordHash != oldPassword) {
-          #error("Incorrect old password");
-        } else {
-          let updated : CustomerProfile = {
-            name = profile.name;
-            email = profile.email;
-            mobile = profile.mobile;
-            passwordHash = newPassword;
-            memberSince = profile.memberSince;
-          };
-          customerProfiles.add(caller, updated);
-          #ok("Password updated successfully");
-        };
-      };
-    };
-  };
 
   public type HotelApprovalStatus = {
     #Approved;
@@ -251,100 +36,31 @@ actor {
     address : Text;
     imageIndex : Nat;
     approvalStatus : HotelApprovalStatus;
+    rules : Text;
   };
 
-  public type Booking = {
-    id : Nat;
-    hotelId : Nat;
-    guestName : Text;
-    guestEmail : Text;
-    phone : Text;
-    checkIn : Text;
-    checkOut : Text;
-    guestCount : Nat;
-    status : Status;
-    created : Int;
-    owner : Principal;
-  };
+  let hotels = Map.empty<Nat, Hotel>();
+  let hotelOwners = Map.empty<Principal, Nat>();
+  let roomInventory = Map.empty<Nat, RoomInventory>();
+  let propertyListings = Map.empty<Nat, PropertyListing>();
+  let bookings = Map.empty<Nat, Booking>();
+  let blockedDates = Map.empty<Nat, BlockedDate>();
+  let customerProfiles = Map.empty<Principal, CustomerProfile>();
+  let emailToPrincipal = Map.empty<Text, Principal>();
+  let mobileToPrincipal = Map.empty<Text, Principal>();
+  let adminLockedAccounts = Map.empty<Principal, Bool>();
+  let adminLoginAttempts = Map.empty<Principal, Nat>();
+  let adminOtps = Map.empty<Principal, OtpEntry>();
+  let userProfiles = Map.empty<Principal, UserProfile>();
 
-  public type Status = {
-    #Confirmed;
-    #Pending;
-    #Cancelled;
-  };
-
-  module Status {
-    public func compare(status1 : Status, status2 : Status) : Order.Order {
-      switch (status1, status2) {
-        case (#Confirmed, #Pending) { #less };
-        case (#Confirmed, #Cancelled) { #less };
-        case (#Pending, #Confirmed) { #greater };
-        case (#Pending, #Cancelled) { #less };
-        case (#Cancelled, #Confirmed) { #greater };
-        case (#Cancelled, #Pending) { #greater };
-        case (_) { #equal };
-      };
-    };
-  };
-
-  public type RoomInventory = {
-    hotelId : Nat;
-    roomType : Text;
-    totalRooms : Nat;
-    availableRooms : Nat;
-  };
-
-  public type BlockedDate = {
-    id : Nat;
-    hotelId : Nat;
-    date : Text;
-    reason : Text;
-  };
-
-  public type PropertyListing = {
-    id : Nat;
-    ownerName : Text;
-    ownerPhone : Text;
-    ownerEmail : Text;
-    hotelName : Text;
-    city : Text;
-    address : Text;
-    pricePerNight : Int;
-    roomType : Text;
-    amenities : [Text];
-    description : Text;
-    subscriptionPlan : Text;
-    status : PropertyListingStatus;
-    submittedAt : Int;
-    submittedBy : Principal;
-    imageUrls : [Text];
-    kycDocumentUrl : Text;
-  };
-
-  public type PropertyListingStatus = {
-    #PendingApproval;
-    #Approved;
-    #Rejected;
-  };
-
-  public type HotelQueryParams = {
-    city : ?Text;
-    minPrice : ?Int;
-    maxPrice : ?Int;
-    amenities : ?[Text];
-  };
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
 
   var nextHotelId = 26;
   var nextBookingId = 1;
   var nextPropertyListingId = 1;
   var nextBlockedDateId = 1;
-
-  let hotels = Map.empty<Nat, Hotel>();
-  let bookings = Map.empty<Nat, Booking>();
-  let propertyListings = Map.empty<Nat, PropertyListing>();
-  let hotelOwners = Map.empty<Principal, Nat>();
-  let roomInventory = Map.empty<Nat, RoomInventory>();
-  let blockedDates = Map.empty<Nat, BlockedDate>();
+  let MAX_ADMIN_LOGIN_ATTEMPTS : Nat = 5;
 
   func hasAllAmenities(hotelAmenities : [Text], required : [Text]) : Bool {
     let amenitySet = Set.fromArray(hotelAmenities);
@@ -388,6 +104,120 @@ actor {
     cityMatch and minPriceMatch and maxPriceMatch and amenitiesMatch;
   };
 
+  func padToSixDigits(s : Text) : Text {
+    let len = s.size();
+    if (len >= 6) { return s };
+    var pad = "";
+    var i = len;
+    while (i < 6) {
+      pad := pad # "0";
+      i += 1;
+    };
+    pad # s;
+  };
+
+  public type OtpEntry = {
+    code : Text;
+    expiresAt : Int;
+  };
+
+  public type PropertyListing = {
+    id : Nat;
+    ownerName : Text;
+    ownerPhone : Text;
+    ownerEmail : Text;
+    hotelName : Text;
+    city : Text;
+    address : Text;
+    pricePerNight : Int;
+    roomType : Text;
+    amenities : [Text];
+    description : Text;
+    subscriptionPlan : Text;
+    status : PropertyListingStatus;
+    submittedAt : Int;
+    submittedBy : Principal;
+    imageUrls : [Text];
+    kycDocumentUrl : Text;
+    rules : Text;
+  };
+
+  public type PropertyListingStatus = {
+    #PendingApproval;
+    #Approved;
+    #Rejected;
+  };
+
+  public type CustomerProfile = {
+    name : Text;
+    email : Text;
+    mobile : Text;
+    passwordHash : Text;
+    memberSince : Int;
+  };
+
+  public type RoomInventory = {
+    hotelId : Nat;
+    roomType : Text;
+    totalRooms : Nat;
+    availableRooms : Nat;
+  };
+
+  public type HotelQueryParams = {
+    city : ?Text;
+    minPrice : ?Int;
+    maxPrice : ?Int;
+    amenities : ?[Text];
+  };
+
+  public type UserProfile = {
+    name : Text;
+    email : Text;
+    phone : Text;
+  };
+
+  public type Booking = {
+    id : Nat;
+    hotelId : Nat;
+    guestName : Text;
+    guestEmail : Text;
+    phone : Text;
+    checkIn : Text;
+    checkOut : Text;
+    guestCount : Nat;
+    status : Status;
+    created : Int;
+    owner : Principal;
+  };
+
+  public type Status = {
+    #Confirmed;
+    #Pending;
+    #Cancelled;
+  };
+
+  module Status {
+    public func compare(status1 : Status, status2 : Status) : Order.Order {
+      switch (status1, status2) {
+        case (#Confirmed, #Pending) { #less };
+        case (#Confirmed, #Cancelled) { #less };
+        case (#Pending, #Confirmed) { #greater };
+        case (#Pending, #Cancelled) { #less };
+        case (#Cancelled, #Confirmed) { #greater };
+        case (#Cancelled, #Pending) { #greater };
+        case (_) { #equal };
+      };
+    };
+  };
+
+  public type BlockedDate = {
+    id : Nat;
+    hotelId : Nat;
+    date : Text;
+    reason : Text;
+  };
+
+  // Public endpoints - no auth required
   public query func searchHotels(queryParams : HotelQueryParams) : async [Hotel] {
     hotels.values().toArray().filter(func(h) { matchesQuery(h, queryParams) });
   };
@@ -399,15 +229,16 @@ actor {
     };
   };
 
+  // Admin-only endpoints
   public query ({ caller }) func getHotelsForAdmin() : async [Hotel] {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can view all hotels");
     };
     hotels.values().toArray();
   };
 
   public shared ({ caller }) func approveHotel(id : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can approve hotels");
     };
 
@@ -425,6 +256,7 @@ actor {
           address = hotel.address;
           imageIndex = hotel.imageIndex;
           approvalStatus = #Approved;
+          rules = hotel.rules;
         };
         hotels.add(id, updatedHotel);
       };
@@ -432,7 +264,7 @@ actor {
   };
 
   public shared ({ caller }) func rejectHotel(id : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can reject hotels");
     };
 
@@ -450,6 +282,7 @@ actor {
           address = hotel.address;
           imageIndex = hotel.imageIndex;
           approvalStatus = #Rejected;
+          rules = hotel.rules;
         };
         hotels.add(id, updatedHotel);
       };
@@ -457,7 +290,7 @@ actor {
   };
 
   public shared ({ caller }) func suspendHotel(id : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can suspend hotels");
     };
 
@@ -475,186 +308,29 @@ actor {
           address = hotel.address;
           imageIndex = hotel.imageIndex;
           approvalStatus = #Rejected;
+          rules = hotel.rules;
         };
         hotels.add(id, updatedHotel);
       };
     };
   };
 
-  public shared ({ caller }) func createBooking(
-    hotelId : Nat,
-    guestName : Text,
-    guestEmail : Text,
-    phone : Text,
-    checkIn : Text,
-    checkOut : Text,
-    guestCount : Nat,
-    created : Int,
-  ) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create bookings");
-    };
-
-    switch (hotels.get(hotelId)) {
-      case (null) { Runtime.trap("Hotel not found") };
-      case (?hotel) {
-        if (hotel.approvalStatus != #Approved) {
-          Runtime.trap("Hotel is not approved for bookings");
-        };
-      };
-    };
-
-    switch (roomInventory.get(hotelId)) {
-      case (null) { Runtime.trap("Room inventory not found") };
-      case (?inventory) {
-        if (inventory.availableRooms == 0) {
-          Runtime.trap("No rooms available for selected dates");
-        };
-        let updatedInventory : RoomInventory = {
-          hotelId = inventory.hotelId;
-          roomType = inventory.roomType;
-          totalRooms = inventory.totalRooms;
-          availableRooms = inventory.availableRooms - 1;
-        };
-        roomInventory.add(hotelId, updatedInventory);
-      };
-    };
-
-    let newId = nextBookingId;
-    let booking : Booking = {
-      id = newId;
-      hotelId = hotelId;
-      guestName = guestName;
-      guestEmail = guestEmail;
-      phone = phone;
-      checkIn = checkIn;
-      checkOut = checkOut;
-      guestCount = guestCount;
-      status = #Confirmed;
-      created = created;
-      owner = caller;
-    };
-
-    bookings.add(newId, booking);
-    nextBookingId += 1;
-    newId;
-  };
-
   public query ({ caller }) func getBookingsByEmail(email : Text) : async [Booking] {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can get bookings by email");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view bookings by email");
     };
-
     bookings.values().toArray().filter(func(b) { b.guestEmail == email });
   };
 
-  public query ({ caller }) func getBooking(id : Nat) : async Booking {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view bookings");
+  public query ({ caller }) func getAllBookings() : async [Booking] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view all bookings");
     };
-
-    switch (bookings.get(id)) {
-      case (null) { Runtime.trap("Booking not found") };
-      case (?booking) {
-        if (booking.owner != caller and not AccessControl.isAdmin(accessControlState, caller)) {
-          Runtime.trap("Unauthorized: Can only view your own bookings");
-        };
-        booking;
-      };
-    };
-  };
-
-  public shared ({ caller }) func cancelBooking(id : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can cancel bookings");
-    };
-
-    switch (bookings.get(id)) {
-      case (null) { Runtime.trap("Booking not found") };
-      case (?booking) {
-        if (booking.owner != caller and not AccessControl.isAdmin(accessControlState, caller)) {
-          Runtime.trap("Unauthorized: Can only cancel your own bookings");
-        };
-
-        let updatedBooking : Booking = {
-          id = booking.id;
-          hotelId = booking.hotelId;
-          guestName = booking.guestName;
-          guestEmail = booking.guestEmail;
-          phone = booking.phone;
-          checkIn = booking.checkIn;
-          checkOut = booking.checkOut;
-          guestCount = booking.guestCount;
-          status = #Cancelled;
-          created = booking.created;
-          owner = booking.owner;
-        };
-        bookings.add(id, updatedBooking);
-
-        switch (roomInventory.get(booking.hotelId)) {
-          case (null) {};
-          case (?inventory) {
-            let restoredInventory : RoomInventory = {
-              hotelId = inventory.hotelId;
-              roomType = inventory.roomType;
-              totalRooms = inventory.totalRooms;
-              availableRooms = inventory.availableRooms + 1;
-            };
-            roomInventory.add(booking.hotelId, restoredInventory);
-          };
-        };
-      };
-    };
-  };
-
-  public shared ({ caller }) func submitPropertyListing(
-    ownerName : Text,
-    ownerPhone : Text,
-    ownerEmail : Text,
-    hotelName : Text,
-    city : Text,
-    address : Text,
-    pricePerNight : Int,
-    roomType : Text,
-    amenities : [Text],
-    description : Text,
-    subscriptionPlan : Text,
-    submittedAt : Int,
-    imageUrls : [Text],
-    kycDocumentUrl : Text,
-  ) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Must be logged in to submit listings");
-    };
-
-    let newId = nextPropertyListingId;
-    let listing : PropertyListing = {
-      id = newId;
-      ownerName = ownerName;
-      ownerPhone = ownerPhone;
-      ownerEmail = ownerEmail;
-      hotelName = hotelName;
-      city = city;
-      address = address;
-      pricePerNight = pricePerNight;
-      roomType = roomType;
-      amenities = amenities;
-      description = description;
-      subscriptionPlan = subscriptionPlan;
-      status = #PendingApproval;
-      submittedAt = submittedAt;
-      submittedBy = caller;
-      imageUrls = imageUrls;
-      kycDocumentUrl = kycDocumentUrl;
-    };
-
-    propertyListings.add(newId, listing);
-    nextPropertyListingId += 1;
-    newId;
+    bookings.values().toArray();
   };
 
   public shared ({ caller }) func approvePropertyListing(listingId : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can approve listings");
     };
 
@@ -677,6 +353,7 @@ actor {
           address = listing.address;
           imageIndex = 0;
           approvalStatus = #Approved;
+          rules = listing.rules;
         };
         hotels.add(hotelId, newHotel);
         nextHotelId += 1;
@@ -709,21 +386,22 @@ actor {
           submittedBy = listing.submittedBy;
           imageUrls = listing.imageUrls;
           kycDocumentUrl = listing.kycDocumentUrl;
+          rules = listing.rules;
         };
         propertyListings.add(listingId, updatedListing);
       };
     };
   };
 
-  public shared ({ caller }) func rejectPropertyListing(id : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+  public shared ({ caller }) func rejectPropertyListing(listingId : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admin can reject listings");
     };
 
-    switch (propertyListings.get(id)) {
+    switch (propertyListings.get(listingId)) {
       case (null) { Runtime.trap("Listing not found") };
       case (?listing) {
-        let updated : PropertyListing = {
+        let updatedListing : PropertyListing = {
           id = listing.id;
           ownerName = listing.ownerName;
           ownerPhone = listing.ownerPhone;
@@ -741,15 +419,16 @@ actor {
           submittedBy = listing.submittedBy;
           imageUrls = listing.imageUrls;
           kycDocumentUrl = listing.kycDocumentUrl;
+          rules = listing.rules;
         };
-        propertyListings.add(id, updated);
+        propertyListings.add(listingId, updatedListing);
       };
     };
   };
 
   public query ({ caller }) func getKycDocumentUrl(listingId : Nat) : async Text {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only super admin can view KYC documents");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view KYC documents");
     };
 
     switch (propertyListings.get(listingId)) {
@@ -759,65 +438,443 @@ actor {
   };
 
   public query ({ caller }) func getPropertyListings() : async [PropertyListing] {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admin can see all listings");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view all property listings");
     };
     propertyListings.values().toArray();
   };
 
-  public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view their listings");
+  public shared ({ caller }) func assignHotelOwner(user : Principal, hotelId : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can assign hotel owners");
     };
-    propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
+
+    switch (hotels.get(hotelId)) {
+      case (null) { Runtime.trap("Hotel not found") };
+      case (?_) {
+        hotelOwners.add(user, hotelId);
+      };
+    };
   };
 
-  public query ({ caller }) func getAllBookings() : async [Booking] {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can access all bookings");
+  public shared ({ caller }) func revokeHotelOwner(user : Principal) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can revoke hotel owners");
     };
-    bookings.values().toArray();
+
+    hotelOwners.remove(user);
+  };
+
+  public shared ({ caller }) func generateAdminOtp() : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can generate OTP");
+    };
+
+    switch (adminLockedAccounts.get(caller)) {
+      case (?true) { Runtime.trap("Account is locked due to too many failed attempts") };
+      case (_) {};
+    };
+
+    let randomNano = Int.abs(Time.now());
+    let codeNat = randomNano % 1_000_000;
+    let code = padToSixDigits(codeNat.toText());
+    let expiresAt = Time.now() + 300_000_000_000;
+    let entry : OtpEntry = { code; expiresAt };
+    adminOtps.add(caller, entry);
+    code;
+  };
+
+  public shared ({ caller }) func verifyAdminOtp(code : Text) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can verify OTP");
+    };
+
+    switch (adminLockedAccounts.get(caller)) {
+      case (?true) { Runtime.trap("Account is locked due to too many failed attempts") };
+      case (_) {};
+    };
+
+    switch (adminOtps.get(caller)) {
+      case (null) {
+        let attempts = switch (adminLoginAttempts.get(caller)) {
+          case (null) { 1 };
+          case (?n) { n + 1 };
+        };
+        adminLoginAttempts.add(caller, attempts);
+        if (attempts >= MAX_ADMIN_LOGIN_ATTEMPTS) {
+          adminLockedAccounts.add(caller, true);
+        };
+        return false;
+      };
+      case (?entry) {
+        if (Time.now() > entry.expiresAt) {
+          adminOtps.remove(caller);
+          let attempts = switch (adminLoginAttempts.get(caller)) {
+            case (null) { 1 };
+            case (?n) { n + 1 };
+          };
+          adminLoginAttempts.add(caller, attempts);
+          if (attempts >= MAX_ADMIN_LOGIN_ATTEMPTS) {
+            adminLockedAccounts.add(caller, true);
+          };
+          return false;
+        };
+
+        if (entry.code == code) {
+          adminOtps.remove(caller);
+          adminLoginAttempts.remove(caller);
+          return true;
+        } else {
+          let attempts = switch (adminLoginAttempts.get(caller)) {
+            case (null) { 1 };
+            case (?n) { n + 1 };
+          };
+          adminLoginAttempts.add(caller, attempts);
+          if (attempts >= MAX_ADMIN_LOGIN_ATTEMPTS) {
+            adminLockedAccounts.add(caller, true);
+          };
+          return false;
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getAdminLockStatus() : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can check lock status");
+    };
+
+    switch (adminLockedAccounts.get(caller)) {
+      case (?true) { true };
+      case (_) { false };
+    };
+  };
+
+  public shared ({ caller }) func unlockAdminAccount() : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can unlock accounts");
+    };
+
+    adminLockedAccounts.remove(caller);
+    adminLoginAttempts.remove(caller);
+    adminOtps.remove(caller);
+  };
+
+  // User-only endpoints
+  public shared ({ caller }) func createBooking(
+    hotelId : Nat,
+    guestName : Text,
+    guestEmail : Text,
+    phone : Text,
+    checkIn : Text,
+    checkOut : Text,
+    guestCount : Nat,
+  ) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create bookings");
+    };
+
+    switch (roomInventory.get(hotelId)) {
+      case (null) { Runtime.trap("Room inventory not found") };
+      case (?inventory) {
+        if (inventory.availableRooms == 0) {
+          Runtime.trap("No rooms available");
+        };
+
+        let bookingId = nextBookingId;
+        let booking : Booking = {
+          id = bookingId;
+          hotelId;
+          guestName;
+          guestEmail;
+          phone;
+          checkIn;
+          checkOut;
+          guestCount;
+          status = #Pending;
+          created = Time.now();
+          owner = caller;
+        };
+        bookings.add(bookingId, booking);
+        nextBookingId += 1;
+
+        let updatedInventory : RoomInventory = {
+          hotelId = inventory.hotelId;
+          roomType = inventory.roomType;
+          totalRooms = inventory.totalRooms;
+          availableRooms = inventory.availableRooms - 1;
+        };
+        roomInventory.add(hotelId, updatedInventory);
+
+        bookingId;
+      };
+    };
+  };
+
+  public query ({ caller }) func getBooking(id : Nat) : async Booking {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view bookings");
+    };
+
+    switch (bookings.get(id)) {
+      case (null) { Runtime.trap("Booking not found") };
+      case (?booking) {
+        if (booking.owner != caller and not AccessControl.isAdmin(accessControlState, caller)) {
+          Runtime.trap("Unauthorized: Can only view your own bookings");
+        };
+        booking;
+      };
+    };
+  };
+
+  public shared ({ caller }) func cancelBooking(id : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can cancel bookings");
+    };
+
+    switch (bookings.get(id)) {
+      case (null) { Runtime.trap("Booking not found") };
+      case (?booking) {
+        if (booking.owner != caller) {
+          Runtime.trap("Unauthorized: Can only cancel your own bookings");
+        };
+
+        let updatedBooking : Booking = {
+          id = booking.id;
+          hotelId = booking.hotelId;
+          guestName = booking.guestName;
+          guestEmail = booking.guestEmail;
+          phone = booking.phone;
+          checkIn = booking.checkIn;
+          checkOut = booking.checkOut;
+          guestCount = booking.guestCount;
+          status = #Cancelled;
+          created = booking.created;
+          owner = booking.owner;
+        };
+        bookings.add(id, updatedBooking);
+
+        switch (roomInventory.get(booking.hotelId)) {
+          case (null) {};
+          case (?inventory) {
+            let updatedInventory : RoomInventory = {
+              hotelId = inventory.hotelId;
+              roomType = inventory.roomType;
+              totalRooms = inventory.totalRooms;
+              availableRooms = inventory.availableRooms + 1;
+            };
+            roomInventory.add(booking.hotelId, updatedInventory);
+          };
+        };
+      };
+    };
+  };
+
+  public shared ({ caller }) func submitPropertyListing(
+    ownerName : Text,
+    ownerPhone : Text,
+    ownerEmail : Text,
+    hotelName : Text,
+    city : Text,
+    address : Text,
+    pricePerNight : Int,
+    roomType : Text,
+    amenities : [Text],
+    description : Text,
+    subscriptionPlan : Text,
+    submittedAt : Int,
+    imageUrls : [Text],
+    kycDocumentUrl : Text,
+    rules : Text,
+  ) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can submit property listings");
+    };
+
+    let listingId = nextPropertyListingId;
+    let listing : PropertyListing = {
+      id = listingId;
+      ownerName;
+      ownerPhone;
+      ownerEmail;
+      hotelName;
+      city;
+      address;
+      pricePerNight;
+      roomType;
+      amenities;
+      description;
+      subscriptionPlan;
+      status = #PendingApproval;
+      submittedAt;
+      submittedBy = caller;
+      imageUrls;
+      kycDocumentUrl;
+      rules;
+    };
+    propertyListings.add(listingId, listing);
+    nextPropertyListingId += 1;
+    listingId;
+  };
+
+  public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view their property listings");
+    };
+
+    propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
   public query ({ caller }) func getMyBookings() : async [Booking] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view bookings.");
+      Runtime.trap("Unauthorized: Only users can view their bookings");
     };
 
-    bookings.values().toArray().filter(func(booking) { booking.owner == caller }).sort(
-      func(a, b) = Int.compare(b.created, a.created)
-    );
+    let userBookings = bookings.values().toArray().filter(func(b) { b.owner == caller });
+    userBookings.sort(func(a : Booking, b : Booking) : Order.Order {
+      if (a.created > b.created) { #less } else if (a.created < b.created) { #greater } else { #equal };
+    });
   };
 
-  public shared ({ caller }) func assignHotelOwner(
-    hotelId : Nat,
-    ownerPrincipal : Principal,
+  public query ({ caller }) func isCallerHotelOwner() : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can check hotel owner status");
+    };
+    isHotelOwner(caller);
+  };
+
+  // User profile endpoints
+  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view profiles");
+    };
+    userProfiles.get(caller);
+  };
+
+  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own profile");
+    };
+    userProfiles.get(user);
+  };
+
+  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can save profiles");
+    };
+    userProfiles.add(caller, profile);
+  };
+
+  // Customer profile endpoints
+  public shared ({ caller }) func registerCustomer(
+    name : Text,
+    email : Text,
+    mobile : Text,
+    passwordHash : Text,
   ) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admin can assign hotel owners");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can register");
     };
-    switch (hotels.get(hotelId)) {
-      case (null) { Runtime.trap("Hotel not found") };
-      case (?_) {
-        hotelOwners.add(ownerPrincipal, hotelId);
+
+    switch (emailToPrincipal.get(email)) {
+      case (?_) { Runtime.trap("Email already registered") };
+      case (null) {};
+    };
+
+    switch (mobileToPrincipal.get(mobile)) {
+      case (?_) { Runtime.trap("Mobile already registered") };
+      case (null) {};
+    };
+
+    let profile : CustomerProfile = {
+      name;
+      email;
+      mobile;
+      passwordHash;
+      memberSince = Time.now();
+    };
+    customerProfiles.add(caller, profile);
+    emailToPrincipal.add(email, caller);
+    mobileToPrincipal.add(mobile, caller);
+  };
+
+  public query func loginCustomer(email : Text, passwordHash : Text) : async Bool {
+    switch (emailToPrincipal.get(email)) {
+      case (null) { false };
+      case (?principal) {
+        switch (customerProfiles.get(principal)) {
+          case (null) { false };
+          case (?profile) { profile.passwordHash == passwordHash };
+        };
       };
     };
   };
 
-  public shared ({ caller }) func revokeHotelOwner(hotelId : Nat) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admin can revoke hotel owners");
+  public shared ({ caller }) func updateCustomerProfile(
+    name : Text,
+    email : Text,
+    mobile : Text,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update profiles");
     };
 
-    let ownerToRevoke = hotelOwners.filter(func(_k, v) { v == hotelId }).keys().next();
-    switch (ownerToRevoke) {
-      case (null) { Runtime.trap("No owner found for this hotel") };
-      case (?owner) {
-        hotelOwners.remove(owner);
+    switch (customerProfiles.get(caller)) {
+      case (null) { Runtime.trap("Profile not found") };
+      case (?profile) {
+        if (profile.email != email) {
+          switch (emailToPrincipal.get(email)) {
+            case (?_) { Runtime.trap("Email already in use") };
+            case (null) {
+              emailToPrincipal.remove(profile.email);
+              emailToPrincipal.add(email, caller);
+            };
+          };
+        };
+
+        if (profile.mobile != mobile) {
+          switch (mobileToPrincipal.get(mobile)) {
+            case (?_) { Runtime.trap("Mobile already in use") };
+            case (null) {
+              mobileToPrincipal.remove(profile.mobile);
+              mobileToPrincipal.add(mobile, caller);
+            };
+          };
+        };
+
+        let updatedProfile : CustomerProfile = {
+          name;
+          email;
+          mobile;
+          passwordHash = profile.passwordHash;
+          memberSince = profile.memberSince;
+        };
+        customerProfiles.add(caller, updatedProfile);
       };
     };
   };
 
+  public shared ({ caller }) func changeCustomerPassword(newPasswordHash : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can change passwords");
+    };
+
+    switch (customerProfiles.get(caller)) {
+      case (null) { Runtime.trap("Profile not found") };
+      case (?profile) {
+        let updatedProfile : CustomerProfile = {
+          name = profile.name;
+          email = profile.email;
+          mobile = profile.mobile;
+          passwordHash = newPasswordHash;
+          memberSince = profile.memberSince;
+        };
+        customerProfiles.add(caller, updatedProfile);
+      };
+    };
+  };
+
+  // Hotel owner endpoints
   public query ({ caller }) func getOwnerHotel() : async Hotel {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
@@ -850,17 +907,15 @@ actor {
     switch (hotelOwners.get(caller)) {
       case (null) { Runtime.trap("No hotel associated with caller") };
       case (?hotelId) {
-        bookings.values().toArray().filter(func(b) { b.hotelId == hotelId }).sort(
-          func(a, b) = Int.compare(b.created, a.created)
-        );
+        let ownerBookings = bookings.values().toArray().filter(func(b) { b.hotelId == hotelId });
+        ownerBookings.sort(func(a : Booking, b : Booking) : Order.Order {
+          if (a.created > b.created) { #less } else if (a.created < b.created) { #greater } else { #equal };
+        });
       };
     };
   };
 
-  public shared ({ caller }) func updateBookingStatus(
-    bookingId : Nat,
-    newStatus : Status,
-  ) : async () {
+  public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -869,18 +924,17 @@ actor {
       Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
-    switch (bookings.get(bookingId)) {
-      case (null) { Runtime.trap("Booking not found") };
-      case (?booking) {
-        switch (hotelOwners.get(caller)) {
-          case (null) { Runtime.trap("No hotel associated with caller") };
-          case (?hotelId) {
+    switch (hotelOwners.get(caller)) {
+      case (null) { Runtime.trap("No hotel associated with caller") };
+      case (?hotelId) {
+        switch (bookings.get(bookingId)) {
+          case (null) { Runtime.trap("Booking not found") };
+          case (?booking) {
             if (booking.hotelId != hotelId) {
-              Runtime.trap("Booking does not belong to your hotel");
+              Runtime.trap("Unauthorized: Booking does not belong to your hotel");
             };
 
             let oldStatus = booking.status;
-
             let updatedBooking : Booking = {
               id = booking.id;
               hotelId = booking.hotelId;
@@ -899,39 +953,21 @@ actor {
             switch (roomInventory.get(hotelId)) {
               case (null) {};
               case (?inventory) {
-                var newAvailable = inventory.availableRooms;
-
+                var availableChange = 0;
                 switch (oldStatus, newStatus) {
-                  case (#Pending, #Confirmed) {
-                    if (newAvailable > 0) {
-                      newAvailable -= 1;
-                    };
-                  };
-                  case (#Confirmed, #Cancelled) {
-                    newAvailable += 1;
-                  };
-                  case (#Pending, #Cancelled) {};
-                  case (#Confirmed, #Confirmed) {};
-                  case (#Cancelled, #Cancelled) {};
-                  case (#Pending, #Pending) {};
-                  case (#Cancelled, #Confirmed) {
-                    if (newAvailable > 0) {
-                      newAvailable -= 1;
-                    };
-                  };
-                  case (#Confirmed, #Pending) {
-                    newAvailable += 1;
-                  };
-                  case (#Cancelled, #Pending) {};
+                  case (#Pending, #Cancelled) { availableChange := 1 };
+                  case (#Confirmed, #Cancelled) { availableChange := 1 };
                 };
 
-                let updatedInventory : RoomInventory = {
-                  hotelId = inventory.hotelId;
-                  roomType = inventory.roomType;
-                  totalRooms = inventory.totalRooms;
-                  availableRooms = newAvailable;
+                if (availableChange > 0) {
+                  let updatedInventory : RoomInventory = {
+                    hotelId = inventory.hotelId;
+                    roomType = inventory.roomType;
+                    totalRooms = inventory.totalRooms;
+                    availableRooms = inventory.availableRooms + 1;
+                  };
+                  roomInventory.add(hotelId, updatedInventory);
                 };
-                roomInventory.add(hotelId, updatedInventory);
               };
             };
           };
@@ -960,10 +996,7 @@ actor {
     };
   };
 
-  public shared ({ caller }) func updateRoomInventory(
-    roomType : Text,
-    totalRooms : Nat,
-  ) : async () {
+  public shared ({ caller }) func updateRoomInventory(totalRooms : Nat, availableRooms : Nat) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -975,17 +1008,18 @@ actor {
     switch (hotelOwners.get(caller)) {
       case (null) { Runtime.trap("No hotel associated with caller") };
       case (?hotelId) {
-        let availableRooms = switch (roomInventory.get(hotelId)) {
-          case (null) { totalRooms };
-          case (?inv) { Nat.min(inv.availableRooms, totalRooms) };
+        switch (roomInventory.get(hotelId)) {
+          case (null) { Runtime.trap("Room inventory not found") };
+          case (?inventory) {
+            let updatedInventory : RoomInventory = {
+              hotelId = inventory.hotelId;
+              roomType = inventory.roomType;
+              totalRooms;
+              availableRooms;
+            };
+            roomInventory.add(hotelId, updatedInventory);
+          };
         };
-        let inventory : RoomInventory = {
-          hotelId;
-          roomType;
-          totalRooms;
-          availableRooms;
-        };
-        roomInventory.add(hotelId, inventory);
       };
     };
   };
@@ -1002,18 +1036,12 @@ actor {
     switch (hotelOwners.get(caller)) {
       case (null) { Runtime.trap("No hotel associated with caller") };
       case (?hotelId) {
-        let blocked = blockedDates.filter(
-          func(_k, v) { v.hotelId == hotelId }
-        ).values().toArray();
-        blocked;
+        blockedDates.values().toArray().filter(func(bd) { bd.hotelId == hotelId });
       };
     };
   };
 
-  public shared ({ caller }) func blockDate(
-    date : Text,
-    reason : Text,
-  ) : async () {
+  public shared ({ caller }) func blockDate(date : Text, reason : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can access this");
     };
@@ -1025,14 +1053,16 @@ actor {
     switch (hotelOwners.get(caller)) {
       case (null) { Runtime.trap("No hotel associated with caller") };
       case (?hotelId) {
+        let blockedDateId = nextBlockedDateId;
         let blockedDate : BlockedDate = {
-          id = nextBlockedDateId;
+          id = blockedDateId;
           hotelId;
           date;
           reason;
         };
-        blockedDates.add(nextBlockedDateId, blockedDate);
+        blockedDates.add(blockedDateId, blockedDate);
         nextBlockedDateId += 1;
+        blockedDateId;
       };
     };
   };
@@ -1046,14 +1076,14 @@ actor {
       Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
-    switch (blockedDates.get(blockedDateId)) {
-      case (null) { Runtime.trap("Blocked date not found") };
-      case (?blocked) {
-        switch (hotelOwners.get(caller)) {
-          case (null) { Runtime.trap("No hotel associated with caller") };
-          case (?hotelId) {
-            if (blocked.hotelId != hotelId) {
-              Runtime.trap("Blocked date does not belong to your hotel");
+    switch (hotelOwners.get(caller)) {
+      case (null) { Runtime.trap("No hotel associated with caller") };
+      case (?hotelId) {
+        switch (blockedDates.get(blockedDateId)) {
+          case (null) { Runtime.trap("Blocked date not found") };
+          case (?blockedDate) {
+            if (blockedDate.hotelId != hotelId) {
+              Runtime.trap("Unauthorized: Blocked date does not belong to your hotel");
             };
             blockedDates.remove(blockedDateId);
           };
@@ -1062,115 +1092,38 @@ actor {
     };
   };
 
-  public query ({ caller }) func isCallerHotelOwner() : async Bool {
+  public shared ({ caller }) func updateHotelRules(rules : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      return false;
-    };
-    hotelOwners.containsKey(caller);
-  };
-
-  public shared ({ caller }) func generateAdminOtp() : async Text {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can generate OTP");
+      Runtime.trap("Unauthorized: Must be logged in to update rules");
     };
 
-    otpCounter += 1;
-    let value = ((otpCounter * 1_000_003) + Time.now()) % 1_000_000;
-    let code = padToSixDigits(value.toText());
-    let expiresAt = Time.now() + (10 * 60 * 1_000_000_000);
-
-    let otpEntry : OtpEntry = {
-      code;
-      expiresAt;
+    if (not isHotelOwner(caller)) {
+      Runtime.trap("Unauthorized: Only hotel owners can access this");
     };
 
-    adminOtps.add(caller, otpEntry);
-    code;
-  };
-
-  public shared ({ caller }) func verifyAdminOtp(code : Text) : async {
-    #ok : Text;
-    #error : Text;
-  } {
-    switch (adminLockedAccounts.get(caller)) {
-      case (?true) {
-        return #error("Account locked. Too many failed attempts. Contact another super admin to unlock.");
-      };
-      case (_) {};
-    };
-
-    switch (adminOtps.get(caller)) {
-      case (null) {
-        adminLoginAttempts.add(caller, 1);
-        #error("Invalid OTP. 4 attempts remaining.");
-      };
-      case (?entry) {
-        let now = Time.now();
-        if (now > entry.expiresAt) {
-          adminOtps.remove(caller);
-          #error("OTP expired");
-        } else if (code == entry.code) {
-          adminLoginAttempts.remove(caller);
-          adminOtps.remove(caller);
-          #ok("Verified");
-        } else {
-          let currentCount = switch (adminLoginAttempts.get(caller)) {
-            case (null) { 0 };
-            case (?count) { count };
-          };
-          let newCount = currentCount + 1;
-          adminLoginAttempts.add(caller, newCount);
-
-          if (newCount >= MAX_ADMIN_LOGIN_ATTEMPTS) {
-            adminLockedAccounts.add(caller, true);
-            adminLoginAttempts.remove(caller);
-            return #error("Account locked after 5 failed attempts. Contact another super admin to unlock.");
-          } else {
-            let remainingAttempts = MAX_ADMIN_LOGIN_ATTEMPTS - newCount;
-            return #error("Invalid OTP. " # remainingAttempts.toText() # " attempts remaining.");
+    switch (hotelOwners.get(caller)) {
+      case (null) { Runtime.trap("No hotel associated with caller") };
+      case (?hotelId) {
+        switch (hotels.get(hotelId)) {
+          case (null) { Runtime.trap("Hotel not found") };
+          case (?hotel) {
+            let updatedHotel : Hotel = {
+              id = hotel.id;
+              name = hotel.name;
+              city = hotel.city;
+              description = hotel.description;
+              starRating = hotel.starRating;
+              pricePerNight = hotel.pricePerNight;
+              amenities = hotel.amenities;
+              address = hotel.address;
+              imageIndex = hotel.imageIndex;
+              approvalStatus = hotel.approvalStatus;
+              rules;
+            };
+            hotels.add(hotelId, updatedHotel);
           };
         };
       };
     };
-  };
-
-  public query ({ caller }) func getAdminLockStatus() : async { locked : Bool; failedAttempts : Nat } {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can access lock status");
-    };
-
-    let locked = switch (adminLockedAccounts.get(caller)) {
-      case (?true) { true };
-      case (_) { false };
-    };
-
-    let failedAttempts = switch (adminLoginAttempts.get(caller)) {
-      case (null) { 0 };
-      case (?count) { count };
-    };
-
-    { locked; failedAttempts };
-  };
-
-  public shared ({ caller }) func unlockAdminAccount(target : Principal) : async () {
-    if (not (AccessControl.isAdmin(accessControlState, caller))) {
-      Runtime.trap("Unauthorized: Only admins can unlock accounts");
-    };
-
-    if (caller == target) {
-      Runtime.trap("Cannot unlock your own account");
-    };
-
-    adminLockedAccounts.remove(target);
-    adminLoginAttempts.remove(target);
-  };
-
-  func padToSixDigits(s : Text) : Text {
-    let len = s.size();
-    if (len >= 6) { return s };
-
-    let needed = 6 - len;
-    let zeros = Array.repeat("0", needed);
-    zeros.concat([s]).toText();
   };
 };

@@ -7,13 +7,6 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface CustomerProfile {
-    name: string;
-    email: string;
-    memberSince: bigint;
-    passwordHash: string;
-    mobile: string;
-}
 export interface PropertyListing {
     id: bigint;
     ownerEmail: string;
@@ -32,6 +25,7 @@ export interface PropertyListing {
     address: string;
     kycDocumentUrl: string;
     roomType: string;
+    rules: string;
 }
 export interface HotelQueryParams {
     city?: string;
@@ -50,6 +44,7 @@ export interface Hotel {
     approvalStatus: HotelApprovalStatus;
     address: string;
     imageIndex: bigint;
+    rules: string;
 }
 export interface RoomInventory {
     availableRooms: bigint;
@@ -105,22 +100,13 @@ export interface backendInterface {
     approveHotel(id: bigint): Promise<void>;
     approvePropertyListing(listingId: bigint): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    assignHotelOwner(hotelId: bigint, ownerPrincipal: Principal): Promise<void>;
-    blockDate(date: string, reason: string): Promise<void>;
+    assignHotelOwner(user: Principal, hotelId: bigint): Promise<void>;
+    blockDate(date: string, reason: string): Promise<bigint>;
     cancelBooking(id: bigint): Promise<void>;
-    changePassword(oldPassword: string, newPassword: string): Promise<{
-        __kind__: "ok";
-        ok: string;
-    } | {
-        __kind__: "error";
-        error: string;
-    }>;
-    createBooking(hotelId: bigint, guestName: string, guestEmail: string, phone: string, checkIn: string, checkOut: string, guestCount: bigint, created: bigint): Promise<bigint>;
+    changeCustomerPassword(newPasswordHash: string): Promise<void>;
+    createBooking(hotelId: bigint, guestName: string, guestEmail: string, phone: string, checkIn: string, checkOut: string, guestCount: bigint): Promise<bigint>;
     generateAdminOtp(): Promise<string>;
-    getAdminLockStatus(): Promise<{
-        locked: boolean;
-        failedAttempts: bigint;
-    }>;
+    getAdminLockStatus(): Promise<boolean>;
     getAllBookings(): Promise<Array<Booking>>;
     getBlockedDates(): Promise<Array<BlockedDate>>;
     getBooking(id: bigint): Promise<Booking>;
@@ -131,7 +117,6 @@ export interface backendInterface {
     getHotelsForAdmin(): Promise<Array<Hotel>>;
     getKycDocumentUrl(listingId: bigint): Promise<string>;
     getMyBookings(): Promise<Array<Booking>>;
-    getMyCustomerProfile(): Promise<CustomerProfile | null>;
     getMyPropertyListings(): Promise<Array<PropertyListing>>;
     getOwnerBookings(): Promise<Array<Booking>>;
     getOwnerHotel(): Promise<Hotel>;
@@ -140,43 +125,20 @@ export interface backendInterface {
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     isCallerHotelOwner(): Promise<boolean>;
-    loginCustomer(email: string, password: string): Promise<{
-        __kind__: "ok";
-        ok: string;
-    } | {
-        __kind__: "error";
-        error: string;
-    }>;
-    registerCustomer(name: string, email: string, mobile: string, password: string): Promise<{
-        __kind__: "ok";
-        ok: string;
-    } | {
-        __kind__: "error";
-        error: string;
-    }>;
+    loginCustomer(email: string, passwordHash: string): Promise<boolean>;
+    registerCustomer(name: string, email: string, mobile: string, passwordHash: string): Promise<void>;
     rejectHotel(id: bigint): Promise<void>;
-    rejectPropertyListing(id: bigint): Promise<void>;
-    revokeHotelOwner(hotelId: bigint): Promise<void>;
+    rejectPropertyListing(listingId: bigint): Promise<void>;
+    revokeHotelOwner(user: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
-    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string): Promise<bigint>;
+    submitPropertyListing(ownerName: string, ownerPhone: string, ownerEmail: string, hotelName: string, city: string, address: string, pricePerNight: bigint, roomType: string, amenities: Array<string>, description: string, subscriptionPlan: string, submittedAt: bigint, imageUrls: Array<string>, kycDocumentUrl: string, rules: string): Promise<bigint>;
     suspendHotel(id: bigint): Promise<void>;
     unblockDate(blockedDateId: bigint): Promise<void>;
-    unlockAdminAccount(target: Principal): Promise<void>;
+    unlockAdminAccount(): Promise<void>;
     updateBookingStatus(bookingId: bigint, newStatus: Status): Promise<void>;
-    updateCustomerProfile(name: string, email: string, mobile: string): Promise<{
-        __kind__: "ok";
-        ok: string;
-    } | {
-        __kind__: "error";
-        error: string;
-    }>;
-    updateRoomInventory(roomType: string, totalRooms: bigint): Promise<void>;
-    verifyAdminOtp(code: string): Promise<{
-        __kind__: "ok";
-        ok: string;
-    } | {
-        __kind__: "error";
-        error: string;
-    }>;
+    updateCustomerProfile(name: string, email: string, mobile: string): Promise<void>;
+    updateHotelRules(rules: string): Promise<void>;
+    updateRoomInventory(totalRooms: bigint, availableRooms: bigint): Promise<void>;
+    verifyAdminOtp(code: string): Promise<boolean>;
 }

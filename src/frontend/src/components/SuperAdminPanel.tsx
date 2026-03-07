@@ -107,6 +107,7 @@ type AdminTab =
   | "hotels"
   | "bookings"
   | "users"
+  | "pending_approvals"
   | "subscriptions"
   | "security";
 
@@ -1125,11 +1126,9 @@ function UsersTab({ actor, currentPrincipal }: UsersTabProps) {
   });
 
   const { mutate: unlockAdmin, isPending: unlockPending } = useMutation({
-    mutationFn: async (principal: string) => {
+    mutationFn: async (_principal: string) => {
       if (!actor) throw new Error("Not connected");
-      const { Principal } = await import("@icp-sdk/core/principal");
-      const p = Principal.fromText(principal);
-      await actor.unlockAdminAccount(p as unknown as Principal);
+      await actor.unlockAdminAccount();
     },
     onSuccess: () => {
       toast.success("Admin account unlocked successfully.");
@@ -1724,6 +1723,461 @@ function SubscriptionsTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pending Approvals Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PendingApprovalsTabProps {
+  listings: PropertyListing[];
+  isLoading: boolean;
+  onApprove: (id: bigint) => void;
+  onReject: (id: bigint) => void;
+  approvePending: boolean;
+  rejectPending: boolean;
+  pendingListingId: bigint | null;
+  actor: import("../backend").backendInterface | null;
+}
+
+function PendingApprovalsTab({
+  listings,
+  isLoading,
+  onApprove,
+  onReject,
+  approvePending,
+  rejectPending,
+  pendingListingId,
+  actor,
+}: PendingApprovalsTabProps) {
+  const [kycViewer, setKycViewer] = useState<KycViewerState>({
+    open: false,
+    listingId: null,
+    url: null,
+    ownerName: "",
+    ownerEmail: "",
+    loading: false,
+  });
+
+  const handleViewKyc = async (listing: PropertyListing) => {
+    if (!actor || !listing.kycDocumentUrl) return;
+    setKycViewer({
+      open: true,
+      listingId: listing.id,
+      url: null,
+      ownerName: listing.ownerName,
+      ownerEmail: listing.ownerEmail,
+      loading: true,
+    });
+    try {
+      const url = await actor.getKycDocumentUrl(listing.id);
+      setKycViewer((prev) => ({ ...prev, url, loading: false }));
+    } catch (err) {
+      setKycViewer((prev) => ({ ...prev, loading: false }));
+      toast.error(
+        `Failed to load KYC document: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
+    }
+  };
+
+  const handleCloseKycViewer = () => {
+    setKycViewer({
+      open: false,
+      listingId: null,
+      url: null,
+      ownerName: "",
+      ownerEmail: "",
+      loading: false,
+    });
+  };
+
+  // Only show pending listings, sorted by latest first
+  const pendingListings = [...listings]
+    .filter((l) => l.status === PropertyListingStatus.PendingApproval)
+    .sort((a, b) => Number(b.submittedAt - a.submittedAt));
+
+  return (
+    <div className="space-y-4">
+      {/* KYC Viewer Dialog */}
+      <Dialog
+        open={kycViewer.open}
+        onOpenChange={(v) => !v && handleCloseKycViewer()}
+      >
+        <DialogContent
+          data-ocid="pending_approvals.kyc_viewer.dialog"
+          className="max-w-lg w-full p-0 gap-0 rounded-2xl overflow-hidden"
+        >
+          <DialogHeader className="px-6 pt-5 pb-4 bg-gradient-to-r from-teal-700 to-teal-900 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-display font-bold text-white leading-tight">
+                    KYC Document — {kycViewer.ownerName || "Owner"}
+                  </DialogTitle>
+                  {kycViewer.ownerEmail && (
+                    <p className="text-teal-200 text-xs mt-0.5">
+                      {kycViewer.ownerEmail}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                data-ocid="pending_approvals.kyc_viewer.close_button"
+                onClick={handleCloseKycViewer}
+                className="text-white/70 hover:text-white transition-colors rounded-full p-1 hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </DialogHeader>
+          <div className="p-5">
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-amber-800 text-xs leading-relaxed">
+                <span className="font-semibold">Confidential document.</span>{" "}
+                This KYC document is only visible to administrators and must not
+                be shared externally.
+              </p>
+            </div>
+            <div className="rounded-xl overflow-hidden border border-border bg-muted/30 min-h-[200px] flex items-center justify-center">
+              {kycViewer.loading ? (
+                <div
+                  data-ocid="pending_approvals.kyc_viewer.loading_state"
+                  className="flex flex-col items-center gap-3 py-10"
+                >
+                  <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+                  <p className="text-sm text-muted-foreground">
+                    Loading KYC document…
+                  </p>
+                </div>
+              ) : kycViewer.url ? (
+                <img
+                  src={kycViewer.url}
+                  alt={`KYC document for ${kycViewer.ownerName}`}
+                  className="w-full h-auto max-h-[400px] object-contain"
+                />
+              ) : (
+                <div
+                  data-ocid="pending_approvals.kyc_viewer.error_state"
+                  className="flex flex-col items-center gap-2 py-10 text-muted-foreground"
+                >
+                  <XCircle className="w-8 h-8 opacity-40" />
+                  <p className="text-sm">Could not load document</p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button
+                data-ocid="pending_approvals.kyc_viewer.close_button"
+                variant="outline"
+                onClick={handleCloseKycViewer}
+                className="gap-2"
+              >
+                <X className="w-4 h-4" />
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Header strip */}
+      <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-amber-800 text-sm font-medium">
+            <span className="font-bold">Pending Hotel Submissions</span> —
+            Review all submitted properties before they go live on HIDESTAY.
+          </p>
+        </div>
+        <span className="shrink-0 bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold px-2.5 py-1 rounded-full">
+          {pendingListings.length} pending
+        </span>
+      </div>
+
+      {/* Loading */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {["pa1", "pa2", "pa3"].map((k) => (
+            <div
+              key={k}
+              className="p-5 rounded-xl border border-border space-y-3"
+            >
+              <div className="flex justify-between">
+                <div className="skeleton-shimmer h-5 w-48 rounded" />
+                <div className="skeleton-shimmer h-6 w-24 rounded-full" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="skeleton-shimmer h-10 rounded-lg" />
+                <div className="skeleton-shimmer h-10 rounded-lg" />
+              </div>
+              <div className="skeleton-shimmer h-16 rounded-lg" />
+              <div className="flex gap-2">
+                <div className="skeleton-shimmer h-8 w-24 rounded-lg" />
+                <div className="skeleton-shimmer h-8 w-24 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : pendingListings.length === 0 ? (
+        <div
+          data-ocid="pending_approvals.empty_state"
+          className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl"
+        >
+          <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-emerald-400 opacity-60" />
+          <p className="text-base font-semibold text-foreground mb-1">
+            All caught up!
+          </p>
+          <p className="text-sm">No pending hotel submissions to review.</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {pendingListings.map((listing, idx) => {
+            const isMutating = pendingListingId === listing.id;
+
+            return (
+              <motion.div
+                key={listing.id.toString()}
+                data-ocid={`pending_approvals.item.${idx + 1}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(idx * 0.06, 0.4) }}
+                className="rounded-2xl border border-amber-200 bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+              >
+                {/* Card Header */}
+                <div className="flex items-center justify-between px-5 py-3 bg-amber-50/60 border-b border-amber-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                      <Building2 className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-foreground leading-tight">
+                        {listing.hotelName}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <MapPin className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">
+                          {listing.city}
+                        </span>
+                        <span className="text-xs text-muted-foreground">·</span>
+                        <span className="text-xs text-muted-foreground">
+                          Submitted {formatDate(listing.submittedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ListingStatusBadge status={listing.status} />
+                </div>
+
+                {/* Card Body */}
+                <div className="p-5 space-y-4">
+                  {/* Hotel images gallery */}
+                  {listing.imageUrls && listing.imageUrls.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        Hotel Images ({listing.imageUrls.length})
+                      </p>
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {listing.imageUrls.slice(0, 5).map((url, imgIdx) => (
+                          <div
+                            key={url}
+                            className="shrink-0 w-28 h-20 rounded-lg overflow-hidden border border-border bg-muted"
+                          >
+                            <img
+                              src={url}
+                              alt={`${listing.hotelName} view ${imgIdx + 1}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hotel info grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Price + Room Type */}
+                    <div className="rounded-xl bg-blue-50/50 border border-blue-100 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Price & Room
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-foreground font-display">
+                          ₹{formatPrice(listing.pricePerNight)}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            /night
+                          </span>
+                        </span>
+                        <Badge className="bg-white text-slate-700 border border-slate-200 text-[10px]">
+                          {listing.roomType}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Subscription Plan */}
+                    <div className="rounded-xl bg-purple-50/50 border border-purple-100 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        Subscription Plan
+                      </p>
+                      <SubscriptionPlanBadge plan={listing.subscriptionPlan} />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <MapPin className="w-4 h-4 shrink-0 mt-0.5 text-brand" />
+                    <span>
+                      {listing.address}, {listing.city}
+                    </span>
+                  </div>
+
+                  {/* Amenities */}
+                  {listing.amenities && listing.amenities.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        Amenities
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {listing.amenities.map((a) => (
+                          <Badge
+                            key={a}
+                            className="bg-slate-50 text-slate-600 border border-slate-200 text-[10px]"
+                          >
+                            {a}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {listing.description && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                        Description
+                      </p>
+                      <p className="text-sm text-foreground leading-relaxed line-clamp-3">
+                        {listing.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Rules */}
+                  {listing.rules && listing.rules.trim().length > 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5" />
+                        Rules & Regulations
+                      </p>
+                      <ul className="space-y-1">
+                        {listing.rules
+                          .split("\n")
+                          .filter((r) => r.trim())
+                          .map((rule) => (
+                            <li
+                              key={rule}
+                              className="text-xs text-foreground flex items-start gap-1.5"
+                            >
+                              <span className="text-brand mt-0.5 shrink-0">
+                                •
+                              </span>
+                              {rule.trim()}
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Owner Details */}
+                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" />
+                      Owner Details
+                    </p>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-semibold text-foreground">
+                        {listing.ownerName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {listing.ownerEmail}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">
+                          {listing.ownerPhone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* KYC + Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border">
+                    {/* View KYC */}
+                    {listing.kycDocumentUrl ? (
+                      <Button
+                        data-ocid={`pending_approvals.view_kyc_button.${idx + 1}`}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewKyc(listing)}
+                        className="text-xs h-8 px-3 gap-1.5 border-teal-200 text-teal-700 hover:bg-teal-50"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        View KYC
+                      </Button>
+                    ) : (
+                      <Badge className="bg-slate-50 text-slate-400 border border-slate-200 text-[10px] gap-1">
+                        No KYC
+                      </Badge>
+                    )}
+
+                    <div className="flex-1" />
+
+                    {/* Reject */}
+                    <Button
+                      data-ocid={`pending_approvals.reject_button.${idx + 1}`}
+                      size="sm"
+                      variant="destructive"
+                      disabled={isMutating && rejectPending}
+                      onClick={() => onReject(listing.id)}
+                      className="h-8 px-4 gap-1.5 text-xs font-semibold"
+                    >
+                      {isMutating && rejectPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5" />
+                      )}
+                      Reject
+                    </Button>
+
+                    {/* Approve */}
+                    <Button
+                      data-ocid={`pending_approvals.approve_button.${idx + 1}`}
+                      size="sm"
+                      disabled={isMutating && approvePending}
+                      onClick={() => onApprove(listing.id)}
+                      className="h-8 px-4 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {isMutating && approvePending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      )}
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Admin OTP Gate
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1771,11 +2225,11 @@ function AdminOtpGate({ actor, onOtpVerified }: AdminOtpGateProps) {
       setOtpValue("");
       try {
         // First check if account is locked
-        const lockStatus = await actor.getAdminLockStatus();
+        const isLocked = await actor.getAdminLockStatus();
         if (cancelled) return;
-        if (lockStatus.locked) {
+        if (isLocked) {
           setIsLocked(true);
-          setFailedAttempts(Number(lockStatus.failedAttempts));
+          setFailedAttempts(5);
           return;
         }
 
@@ -1839,28 +2293,21 @@ function AdminOtpGate({ actor, onOtpVerified }: AdminOtpGateProps) {
     setIsVerifying(true);
     setErrorMsg(null);
     try {
-      const result = await actor.verifyAdminOtp(otpValue);
-      if (result.__kind__ === "ok") {
+      const verified = await actor.verifyAdminOtp(otpValue);
+      if (verified) {
         setFailedAttempts(0);
         toast.success("Identity verified. Welcome to the Admin Panel.");
         onOtpVerified();
       } else {
-        const errMessage = result.error ?? "Invalid OTP. Please try again.";
-        // Check if account just got locked
-        if (errMessage.toLowerCase().includes("locked")) {
+        const newFailedCount = failedAttempts + 1;
+        setFailedAttempts(newFailedCount);
+        if (newFailedCount >= 5) {
           setIsLocked(true);
-          setFailedAttempts(5);
-          toast.error(errMessage);
+          toast.error("Account locked after 5 failed attempts.");
         } else {
-          // Try to extract remaining attempts from message (e.g., "X attempts remaining")
-          const remainingMatch = errMessage.match(
-            /(\d+)\s+attempts?\s+remaining/i,
+          setErrorMsg(
+            `Invalid OTP. Please try again. (${newFailedCount}/5 failed)`,
           );
-          if (remainingMatch) {
-            const remaining = Number.parseInt(remainingMatch[1], 10);
-            setFailedAttempts(5 - remaining);
-          }
-          setErrorMsg(errMessage);
           setOtpValue("");
         }
       }
@@ -2735,17 +3182,25 @@ export function SuperAdminPanel({
                     Users
                   </TabsTrigger>
                   <TabsTrigger
+                    data-ocid="super_admin.pending_approvals.tab"
+                    value="pending_approvals"
+                    className="data-[state=active]:bg-brand data-[state=active]:text-white rounded-lg px-4 py-2 text-sm font-semibold gap-2 whitespace-nowrap"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Pending Approvals
+                    {pendingListingsCount > 0 && (
+                      <span className="ml-1 bg-amber-400 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
+                        {pendingListingsCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger
                     data-ocid="super_admin.subscriptions.tab"
                     value="subscriptions"
                     className="data-[state=active]:bg-brand data-[state=active]:text-white rounded-lg px-4 py-2 text-sm font-semibold gap-2 whitespace-nowrap"
                   >
                     <Wallet className="w-4 h-4" />
                     Subscriptions
-                    {pendingListingsCount > 0 && (
-                      <span className="ml-1 bg-amber-400 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">
-                        {pendingListingsCount}
-                      </span>
-                    )}
                   </TabsTrigger>
                   <TabsTrigger
                     data-ocid="super_admin.security.tab"
@@ -2796,6 +3251,19 @@ export function SuperAdminPanel({
                       <UsersTab
                         actor={actor}
                         currentPrincipal={currentPrincipal}
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="pending_approvals" className="mt-0">
+                      <PendingApprovalsTab
+                        listings={listings}
+                        isLoading={listingsLoading}
+                        onApprove={approveListing}
+                        onReject={rejectListing}
+                        approvePending={approveListingPending}
+                        rejectPending={rejectListingPending}
+                        pendingListingId={pendingListingId}
+                        actor={actor}
                       />
                     </TabsContent>
 

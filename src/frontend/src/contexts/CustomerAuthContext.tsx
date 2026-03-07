@@ -1,4 +1,4 @@
-import type { CustomerProfile } from "@/backend.d";
+import type { UserProfile } from "@/backend.d";
 import { useActor } from "@/hooks/useActor";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +12,7 @@ import {
 
 interface CustomerAuthState {
   isAuthenticated: boolean; // II is logged in AND has a customer profile
-  profile: CustomerProfile | null;
+  profile: UserProfile | null;
   isLoadingProfile: boolean;
   login: (
     email: string,
@@ -53,11 +53,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     data: profile,
     isLoading: isLoadingProfile,
     refetch: refetchProfile,
-  } = useQuery<CustomerProfile | null>({
+  } = useQuery<UserProfile | null>({
     queryKey: ["customer-profile"],
     queryFn: async () => {
       if (!actor) return null;
-      return actor.getMyCustomerProfile();
+      return actor.getCallerUserProfile();
     },
     enabled: isIILoggedIn && !!actor && !actorLoading,
     staleTime: 60_000,
@@ -79,15 +79,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const result = await actor.loginCustomer(email, password);
-        if (result.__kind__ === "ok") {
+        const success = await actor.loginCustomer(email, password);
+        if (success) {
           setIsEmailAuthed(true);
           await queryClient.invalidateQueries({
             queryKey: ["customer-profile"],
           });
           return { success: true };
         }
-        return { success: false, error: result.error };
+        return { success: false, error: "Invalid email or password." };
       } catch (_e) {
         return { success: false, error: "Login failed. Please try again." };
       }
@@ -111,24 +111,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const result = await actor.registerCustomer(
-          name,
-          email,
-          mobile,
-          password,
-        );
-        if (result.__kind__ === "ok") {
-          setIsEmailAuthed(true);
-          await queryClient.invalidateQueries({
-            queryKey: ["customer-profile"],
-          });
-          return { success: true };
-        }
-        return { success: false, error: result.error };
-      } catch (_e) {
+        await actor.registerCustomer(name, email, mobile, password);
+        setIsEmailAuthed(true);
+        await queryClient.invalidateQueries({
+          queryKey: ["customer-profile"],
+        });
+        return { success: true };
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Registration failed. Please try again.";
         return {
           success: false,
-          error: "Registration failed. Please try again.",
+          error: msg,
         };
       }
     },

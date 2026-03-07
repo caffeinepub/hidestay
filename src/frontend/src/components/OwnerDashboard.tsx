@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { useActor } from "@/hooks/useActor";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +24,7 @@ import {
   Loader2,
   MapPin,
   Package,
+  ScrollText,
   Star,
   Trash2,
   X,
@@ -38,7 +40,12 @@ import { Status } from "../backend.d";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type DashboardTab = "overview" | "bookings" | "inventory" | "calendar";
+type DashboardTab =
+  | "overview"
+  | "bookings"
+  | "inventory"
+  | "calendar"
+  | "rules";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -99,6 +106,7 @@ interface OverviewTabProps {
   bookings: Booking[];
   onGoToBookings: () => void;
   onGoToCalendar: () => void;
+  onGoToRules: () => void;
 }
 
 function OverviewTab({
@@ -107,6 +115,7 @@ function OverviewTab({
   bookings,
   onGoToBookings,
   onGoToCalendar,
+  onGoToRules,
 }: OverviewTabProps) {
   const totalRooms = Number(inventory?.totalRooms ?? 0);
   const availableRooms = Number(inventory?.availableRooms ?? 0);
@@ -182,6 +191,14 @@ function OverviewTab({
           >
             <CalendarDays className="w-4 h-4" />
             Calendar
+          </button>
+          <button
+            type="button"
+            onClick={onGoToRules}
+            className="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-sm px-4 py-2 rounded-xl transition-all duration-200 border border-white/20"
+          >
+            <ScrollText className="w-4 h-4" />
+            Edit Rules
           </button>
         </div>
       </div>
@@ -519,7 +536,7 @@ function InventoryTab({
     mutationFn: async () => {
       if (!actor) throw new Error("Not connected");
       await actor.updateRoomInventory(
-        roomType,
+        BigInt(Number.parseInt(totalRooms)),
         BigInt(Number.parseInt(totalRooms)),
       );
     },
@@ -1169,6 +1186,119 @@ function CalendarTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tab: Rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RulesTabProps {
+  hotel: Hotel;
+  actor: import("../backend").backendInterface | null;
+  onRefresh: () => void;
+}
+
+function RulesTab({ hotel, actor, onRefresh }: RulesTabProps) {
+  const [rules, setRules] = useState(hotel.rules ?? "");
+
+  const { mutate: saveRules, isPending } = useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      await actor.updateHotelRules(rules);
+    },
+    onSuccess: () => {
+      toast.success("Rules updated successfully.");
+      onRefresh();
+    },
+    onError: () => {
+      toast.error("Failed to update rules.");
+    },
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
+      <div className="bg-card border border-border rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-5">
+          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+            <ScrollText className="w-4 h-4 text-amber-600" />
+          </div>
+          <h3 className="font-display font-bold text-base text-foreground">
+            Hotel Rules &amp; Regulations
+          </h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="rules-textarea" className="text-sm font-semibold">
+              House Rules
+            </Label>
+            <Textarea
+              id="rules-textarea"
+              data-ocid="owner_dashboard.rules.textarea"
+              placeholder="Enter each rule on a new line..."
+              value={rules}
+              onChange={(e) => setRules(e.target.value)}
+              rows={8}
+              className="rounded-xl border-input resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Each line will be shown as a separate rule on your hotel page.
+            </p>
+          </div>
+
+          <Button
+            data-ocid="owner_dashboard.rules.save_button"
+            type="button"
+            disabled={isPending}
+            onClick={() => saveRules()}
+            className="w-full bg-[oklch(0.52_0.22_25.5)] hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl transition-all duration-200"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <ScrollText className="mr-2 h-4 w-4" />
+                Save Rules
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Preview */}
+      {rules.trim().length > 0 && (
+        <div className="bg-muted/30 border border-border rounded-2xl p-5">
+          <h4 className="font-display font-bold text-sm text-foreground mb-3 flex items-center gap-2">
+            <Info className="w-4 h-4 text-muted-foreground" />
+            Preview
+          </h4>
+          <ul className="space-y-2">
+            {rules
+              .split("\n")
+              .map((r) => r.trim())
+              .filter((r) => r.length > 0)
+              .map((rule) => (
+                <li
+                  key={rule}
+                  className="flex items-start gap-2.5 text-sm text-foreground"
+                >
+                  <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  {rule}
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Owner Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1268,6 +1398,11 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
       id: "calendar",
       label: "Calendar",
       icon: <CalendarDays className="w-4 h-4" />,
+    },
+    {
+      id: "rules",
+      label: "Rules",
+      icon: <ScrollText className="w-4 h-4" />,
     },
   ];
 
@@ -1389,6 +1524,7 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                         bookings={bookings}
                         onGoToBookings={() => setActiveTab("bookings")}
                         onGoToCalendar={() => setActiveTab("calendar")}
+                        onGoToRules={() => setActiveTab("rules")}
                       />
                     </motion.div>
                   )}
@@ -1422,6 +1558,16 @@ export function OwnerDashboard({ open, onClose }: OwnerDashboardProps) {
                         bookings={bookings}
                         blockedDates={blockedDates}
                         isLoading={blockedDatesLoading}
+                        actor={actor}
+                        onRefresh={handleRefreshAll}
+                      />
+                    </motion.div>
+                  )}
+
+                  {activeTab === "rules" && (
+                    <motion.div key="rules">
+                      <RulesTab
+                        hotel={hotel}
                         actor={actor}
                         onRefresh={handleRefreshAll}
                       />

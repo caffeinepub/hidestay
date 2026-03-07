@@ -29,13 +29,6 @@ export interface Booking {
   'checkOut' : string,
   'phone' : string,
 }
-export interface CustomerProfile {
-  'name' : string,
-  'email' : string,
-  'memberSince' : bigint,
-  'passwordHash' : string,
-  'mobile' : string,
-}
 export interface Hotel {
   'id' : bigint,
   'starRating' : bigint,
@@ -47,6 +40,7 @@ export interface Hotel {
   'approvalStatus' : HotelApprovalStatus,
   'address' : string,
   'imageIndex' : bigint,
+  'rules' : string,
 }
 export type HotelApprovalStatus = { 'Approved' : null } |
   { 'Rejected' : null } |
@@ -75,6 +69,7 @@ export interface PropertyListing {
   'address' : string,
   'kycDocumentUrl' : string,
   'roomType' : string,
+  'rules' : string,
 }
 export type PropertyListingStatus = { 'Approved' : null } |
   { 'Rejected' : null } |
@@ -127,23 +122,16 @@ export interface _SERVICE {
   'approveHotel' : ActorMethod<[bigint], undefined>,
   'approvePropertyListing' : ActorMethod<[bigint], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
-  'assignHotelOwner' : ActorMethod<[bigint, Principal], undefined>,
-  'blockDate' : ActorMethod<[string, string], undefined>,
+  'assignHotelOwner' : ActorMethod<[Principal, bigint], undefined>,
+  'blockDate' : ActorMethod<[string, string], bigint>,
   'cancelBooking' : ActorMethod<[bigint], undefined>,
-  'changePassword' : ActorMethod<
-    [string, string],
-    { 'ok' : string } |
-      { 'error' : string }
-  >,
+  'changeCustomerPassword' : ActorMethod<[string], undefined>,
   'createBooking' : ActorMethod<
-    [bigint, string, string, string, string, string, bigint, bigint],
+    [bigint, string, string, string, string, string, bigint],
     bigint
   >,
   'generateAdminOtp' : ActorMethod<[], string>,
-  'getAdminLockStatus' : ActorMethod<
-    [],
-    { 'locked' : boolean, 'failedAttempts' : bigint }
-  >,
+  'getAdminLockStatus' : ActorMethod<[], boolean>,
   'getAllBookings' : ActorMethod<[], Array<Booking>>,
   'getBlockedDates' : ActorMethod<[], Array<BlockedDate>>,
   'getBooking' : ActorMethod<[bigint], Booking>,
@@ -154,7 +142,6 @@ export interface _SERVICE {
   'getHotelsForAdmin' : ActorMethod<[], Array<Hotel>>,
   'getKycDocumentUrl' : ActorMethod<[bigint], string>,
   'getMyBookings' : ActorMethod<[], Array<Booking>>,
-  'getMyCustomerProfile' : ActorMethod<[], [] | [CustomerProfile]>,
   'getMyPropertyListings' : ActorMethod<[], Array<PropertyListing>>,
   'getOwnerBookings' : ActorMethod<[], Array<Booking>>,
   'getOwnerHotel' : ActorMethod<[], Hotel>,
@@ -163,19 +150,11 @@ export interface _SERVICE {
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'isCallerHotelOwner' : ActorMethod<[], boolean>,
-  'loginCustomer' : ActorMethod<
-    [string, string],
-    { 'ok' : string } |
-      { 'error' : string }
-  >,
-  'registerCustomer' : ActorMethod<
-    [string, string, string, string],
-    { 'ok' : string } |
-      { 'error' : string }
-  >,
+  'loginCustomer' : ActorMethod<[string, string], boolean>,
+  'registerCustomer' : ActorMethod<[string, string, string, string], undefined>,
   'rejectHotel' : ActorMethod<[bigint], undefined>,
   'rejectPropertyListing' : ActorMethod<[bigint], undefined>,
-  'revokeHotelOwner' : ActorMethod<[bigint], undefined>,
+  'revokeHotelOwner' : ActorMethod<[Principal], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'searchHotels' : ActorMethod<[HotelQueryParams], Array<Hotel>>,
   'submitPropertyListing' : ActorMethod<
@@ -194,24 +173,18 @@ export interface _SERVICE {
       bigint,
       Array<string>,
       string,
+      string,
     ],
     bigint
   >,
   'suspendHotel' : ActorMethod<[bigint], undefined>,
   'unblockDate' : ActorMethod<[bigint], undefined>,
-  'unlockAdminAccount' : ActorMethod<[Principal], undefined>,
+  'unlockAdminAccount' : ActorMethod<[], undefined>,
   'updateBookingStatus' : ActorMethod<[bigint, Status], undefined>,
-  'updateCustomerProfile' : ActorMethod<
-    [string, string, string],
-    { 'ok' : string } |
-      { 'error' : string }
-  >,
-  'updateRoomInventory' : ActorMethod<[string, bigint], undefined>,
-  'verifyAdminOtp' : ActorMethod<
-    [string],
-    { 'ok' : string } |
-      { 'error' : string }
-  >,
+  'updateCustomerProfile' : ActorMethod<[string, string, string], undefined>,
+  'updateHotelRules' : ActorMethod<[string], undefined>,
+  'updateRoomInventory' : ActorMethod<[bigint, bigint], undefined>,
+  'verifyAdminOtp' : ActorMethod<[string], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

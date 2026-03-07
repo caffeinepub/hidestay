@@ -390,7 +390,7 @@ function HotelDetailPage({
     ? descriptionParts.slice(1).join(" | ")
     : hotel.description;
 
-  const RULES = [
+  const DEFAULT_RULES = [
     "Unmarried couples are welcome",
     "No smoking inside rooms (designated smoking areas available)",
     "Pets not allowed",
@@ -399,6 +399,13 @@ function HotelDetailPage({
     "Loud music and parties are not permitted after 10:00 PM",
     "Hotel is not responsible for loss of valuables",
   ];
+  const RULES =
+    hotel.rules && hotel.rules.trim().length > 0
+      ? hotel.rules
+          .split("\n")
+          .map((r) => r.trim())
+          .filter((r) => r.length > 0)
+      : DEFAULT_RULES;
 
   const CANCELLATION_POLICIES = [
     {
@@ -1044,7 +1051,6 @@ function BookingModal({
         form.checkIn,
         form.checkOut,
         BigInt(form.guestCount),
-        BigInt(Date.now()),
       );
       return id;
     },
@@ -1423,6 +1429,7 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
     roomType: "",
     description: "",
     amenities: [] as string[],
+    rules: "",
     ownerName: "",
     ownerPhone: "",
     ownerEmail: "",
@@ -1586,6 +1593,7 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
         BigInt(Date.now()),
         imageUrls,
         kycDocumentUrl,
+        form.rules,
       );
       return id;
     },
@@ -1618,6 +1626,7 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
       roomType: "",
       description: "",
       amenities: [],
+      rules: "",
       ownerName: "",
       ownerPhone: "",
       ownerEmail: "",
@@ -1940,6 +1949,30 @@ function ListPropertyModal({ open, onClose, actor }: ListPropertyModalProps) {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Hotel Rules & Regulations */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="lp-rules" className="text-sm font-semibold">
+                      Hotel Rules & Regulations{" "}
+                      <span className="text-muted-foreground font-normal">
+                        (Optional)
+                      </span>
+                    </Label>
+                    <Textarea
+                      id="lp-rules"
+                      data-ocid="list_property.rules_textarea"
+                      placeholder={
+                        "Enter one rule per line, e.g.:\nNo smoking inside rooms\nCheck-in from 12:00 PM\nGuests must carry valid ID"
+                      }
+                      value={form.rules}
+                      onChange={(e) => updateField("rules", e.target.value)}
+                      className="rounded-lg border-input min-h-[100px] resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Write one rule per line. These will be displayed on your
+                      hotel's detail page.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -4221,24 +4254,6 @@ interface CustomerProfilePageProps {
   onMyBookingsClick: () => void;
 }
 
-function formatMemberSince(memberSince: bigint): string {
-  try {
-    const ms = Number(memberSince);
-    if (ms === 0) return "Recently joined";
-    // If it looks like a nanoseconds timestamp (ICP uses ns), convert
-    const asMs = ms > 1e15 ? ms / 1_000_000 : ms;
-    const date = new Date(asMs);
-    if (Number.isNaN(date.getTime())) return "Recently joined";
-    return date.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return "Recently joined";
-  }
-}
-
 function CustomerProfilePage({
   open,
   onClose,
@@ -4269,7 +4284,7 @@ function CustomerProfilePage({
       setEditForm({
         name: profile.name,
         email: profile.email,
-        mobile: profile.mobile ?? "",
+        mobile: (profile as { mobile?: string }).mobile ?? profile.phone ?? "",
       });
     }
   }, [profile]);
@@ -4295,12 +4310,11 @@ function CustomerProfilePage({
   const { mutate: saveProfile, isPending: isSavingProfile } = useMutation({
     mutationFn: async () => {
       if (!actor) throw new Error("Not connected");
-      const result = await actor.updateCustomerProfile(
+      await actor.updateCustomerProfile(
         editForm.name,
         editForm.email,
         editForm.mobile,
       );
-      if (result.__kind__ === "error") throw new Error(result.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
@@ -4318,11 +4332,7 @@ function CustomerProfilePage({
     {
       mutationFn: async () => {
         if (!actor) throw new Error("Not connected");
-        const result = await actor.changePassword(
-          pwForm.oldPassword,
-          pwForm.newPassword,
-        );
-        if (result.__kind__ === "error") throw new Error(result.error);
+        await actor.changeCustomerPassword(pwForm.newPassword);
       },
       onSuccess: () => {
         setPwSuccess(true);
@@ -4423,8 +4433,7 @@ function CustomerProfilePage({
                       {profile?.email}
                     </p>
                     <p className="text-white/55 text-xs mt-1">
-                      Member since{" "}
-                      {profile ? formatMemberSince(profile.memberSince) : "—"}
+                      HIDESTAY Member
                     </p>
                   </div>
                 </div>
@@ -4607,7 +4616,10 @@ function CustomerProfilePage({
                           setEditForm({
                             name: profile.name,
                             email: profile.email,
-                            mobile: profile.mobile ?? "",
+                            mobile:
+                              (profile as { mobile?: string }).mobile ??
+                              profile.phone ??
+                              "",
                           });
                       }}
                       className="border-border font-semibold rounded-xl"
@@ -4653,8 +4665,10 @@ function CustomerProfilePage({
                         Mobile Number
                       </p>
                       <p className="font-semibold text-foreground text-sm">
-                        {profile?.mobile ? (
-                          profile.mobile
+                        {((profile as { mobile?: string } | undefined)
+                          ?.mobile ?? profile?.phone) ? (
+                          ((profile as { mobile?: string } | undefined)
+                            ?.mobile ?? profile?.phone)
                         ) : (
                           <span className="text-muted-foreground font-normal italic">
                             Not set
