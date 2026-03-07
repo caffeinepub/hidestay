@@ -3982,11 +3982,6 @@ function PasswordStrengthBar({ password }: { password: string }) {
 
 function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
   const { login, register, isAuthenticated, profile } = useCustomerAuth();
-  const {
-    identity,
-    login: iiLogin,
-    isLoggingIn: iiLoggingIn,
-  } = useInternetIdentity();
 
   const [activeTab, setActiveTab] = useState<"login" | "signup">(defaultTab);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
@@ -4001,8 +3996,6 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
   const [signupError, setSignupError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
-
-  const isIILoggedIn = !!identity;
 
   const handleClose = () => {
     onClose();
@@ -4055,10 +4048,6 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
     );
   }
 
-  const handleIILogin = async () => {
-    iiLogin();
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -4067,13 +4056,6 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
       return;
     }
     setIsSubmitting(true);
-
-    // If not II logged in, trigger II first
-    if (!isIILoggedIn) {
-      iiLogin();
-      setIsSubmitting(false);
-      return;
-    }
 
     const result = await login(loginForm.email, loginForm.password);
     setIsSubmitting(false);
@@ -4113,13 +4095,6 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
       return;
     }
     setIsSubmitting(true);
-
-    // If not II logged in, trigger II first
-    if (!isIILoggedIn) {
-      iiLogin();
-      setIsSubmitting(false);
-      return;
-    }
 
     const result = await register(
       signupForm.name,
@@ -4170,35 +4145,6 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
             </button>
           </div>
         </div>
-
-        {/* II login prompt if not connected */}
-        {!isIILoggedIn && (
-          <div className="px-6 pt-5 pb-2">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-amber-800 text-xs font-semibold leading-snug">
-                  Connect with Internet Identity first
-                </p>
-                <p className="text-amber-700 text-[11px] mt-0.5 leading-snug">
-                  Required for secure authentication on ICP.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={handleIILogin}
-                disabled={iiLoggingIn}
-                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded-lg px-3 h-7 gap-1 ml-auto"
-              >
-                {iiLoggingIn ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  "Connect"
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
 
         <div className="px-6 pb-6 pt-4">
           <AnimatePresence mode="wait">
@@ -4328,20 +4274,13 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                       <Button
                         data-ocid="auth.login_submit_button"
                         type="submit"
-                        disabled={
-                          isSubmitting || (!isIILoggedIn && iiLoggingIn)
-                        }
+                        disabled={isSubmitting}
                         className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl mt-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                       >
                         {isSubmitting ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Signing in...
-                          </>
-                        ) : !isIILoggedIn ? (
-                          <>
-                            <LogIn className="mr-2 h-4 w-4" />
-                            Connect &amp; Sign In
                           </>
                         ) : (
                           <>
@@ -4512,20 +4451,13 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                       <Button
                         data-ocid="auth.signup_submit_button"
                         type="submit"
-                        disabled={
-                          isSubmitting || (!isIILoggedIn && iiLoggingIn)
-                        }
+                        disabled={isSubmitting}
                         className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-bold py-5 rounded-xl mt-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                       >
                         {isSubmitting ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Creating account...
-                          </>
-                        ) : !isIILoggedIn ? (
-                          <>
-                            <LogIn className="mr-2 h-4 w-4" />
-                            Connect &amp; Create Account
                           </>
                         ) : (
                           <>

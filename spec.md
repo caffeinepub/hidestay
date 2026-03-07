@@ -1,56 +1,26 @@
-# HIDESTAY — Editable Check-in / Check-out System
+# HIDESTAY
 
 ## Current State
-
-- `Hotel` type has fields: id, name, city, description, starRating, pricePerNight, amenities, address, imageIndex, imageUrls, approvalStatus, rules, ownerEmail, ownerPrincipal.
-- Check-in and Check-out times on the Hotel Detail Page are **hardcoded** strings ("12:00 PM" / "11:00 AM") in App.tsx — they are not stored or fetched from the backend.
-- `PropertyListing` type does not include checkInTime or checkOutTime fields.
-- `submitPropertyListing` does not accept checkInTime/checkOutTime parameters.
-- The Owner Dashboard has no UI to edit check-in/check-out times.
-- No backend endpoint exists to update hotel check-in/check-out times.
+Customer login uses a two-step process: (1) Internet Identity (II) connection must happen first, then (2) email + password validation. The `CustomerAuthContext` checks `isIILoggedIn` before allowing login or registration. The `AuthModal` shows an amber "Connect with Internet Identity first" banner and the submit buttons show "Connect & Sign In" / "Connect & Create Account" when II is not yet connected. The login/register handlers short-circuit and call `iiLogin()` if II is not yet connected.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `checkInTime: Text` and `checkOutTime: Text` fields to the `Hotel` type.
-- `checkInTime: Text` and `checkOutTime: Text` fields to the `PropertyListing` type.
-- `checkInTime` and `checkOutTime` parameters to `submitPropertyListing` backend function.
-- `updateHotelTimes(checkInTime: Text, checkOutTime: Text)` — owner-only endpoint to update times directly on the hotel record (same pattern as `updateHotelRules`).
-- Check-in Time and Check-out Time input fields in the "List Your Property" modal form (App.tsx).
-- A new "Times" tab (or section within the existing "Rules" tab) in the Owner Dashboard where the owner can edit check-in/check-out times and save them instantly.
+- Session token stored in `localStorage` so the customer stays logged in across page reloads without needing II
+- `isEmailAuthed` state derived solely from the email+password backend call
 
 ### Modify
-- `approvePropertyListing` — copy `listing.checkInTime` and `listing.checkOutTime` to the new hotel record.
-- `addHotelAdmin` — include default `checkInTime = "12:00 PM"` and `checkOutTime = "11:00 AM"` so seeded hotels keep working.
-- All hotel record reconstructions (`approveHotel`, `rejectHotel`, `suspendHotel`, `updateHotelRules`) — carry through the new `checkInTime` and `checkOutTime` fields unchanged.
-- Hotel Detail Page (App.tsx) — replace hardcoded "12:00 PM" / "11:00 AM" with `hotel.checkInTime` / `hotel.checkOutTime` from the fetched hotel object.
-- Owner Dashboard — add a "Times" tab with editable time fields that call `updateHotelTimes`.
+- `CustomerAuthContext` — remove all references to `useInternetIdentity`; replace `isIILoggedIn` check with a simple `!!actor` check; `logout` no longer calls `clearII()`; profile fetch is enabled whenever the actor is ready (not gated on II); `isAuthenticated` is true when `isEmailAuthed` is true OR when a profile is loaded
+- `AuthModal` — remove the "Connect with Internet Identity" amber banner block; remove `handleIILogin`; remove `useInternetIdentity` import; change submit button labels to "Sign In" / "Create Account" unconditionally; remove `isIILoggedIn` conditionals from disabled states and button text
 
 ### Remove
-- Nothing removed.
+- `useInternetIdentity` import from `CustomerAuthContext`
+- `clearII()` call from customer `logout`
+- II banner (lines ~4175–4201 in App.tsx) from `AuthModal`
+- `handleIILogin` function from `AuthModal`
+- `isIILoggedIn` variable and all conditional logic in `AuthModal` that references it
 
 ## Implementation Plan
-
-1. **Backend (Motoko)**
-   - Add `checkInTime: Text` and `checkOutTime: Text` to `Hotel` type.
-   - Add `checkInTime: Text` and `checkOutTime: Text` to `PropertyListing` type.
-   - Update `addHotelAdmin` to accept and store these fields (with defaults "12:00 PM" / "11:00 AM").
-   - Update `submitPropertyListing` to accept `checkInTime` and `checkOutTime`.
-   - Update `approvePropertyListing` to copy times from listing to hotel.
-   - Update all hotel record reconstructions to carry the new fields.
-   - Add `updateHotelTimes(checkInTime, checkOutTime)` — owner-only, updates hotel record directly (same pattern as `updateHotelRules`).
-
-2. **Frontend — List Your Property form (App.tsx)**
-   - Add `checkInTime` and `checkOutTime` to the form state (defaults: "12:00 PM", "11:00 AM").
-   - Add time input fields (text inputs with time format hints) in the Hotel Details section.
-   - Pass the two new fields to `submitPropertyListing`.
-
-3. **Frontend — Hotel Detail Page (App.tsx)**
-   - Replace hardcoded "12:00 PM" / "11:00 AM" strings with `hotel.checkInTime` / `hotel.checkOutTime` from the fetched hotel object.
-   - Update subtitle hints accordingly (dynamic based on value).
-
-4. **Frontend — Owner Dashboard (OwnerDashboard.tsx)**
-   - Add a "Times" tab to `DashboardTab` type.
-   - Build a `TimesTab` component: two text inputs for Check-in Time and Check-out Time, pre-filled with current hotel values, with a Save button that calls `updateHotelTimes`.
-   - Add the tab button in the tab bar.
-   - Wire the mutation and invalidate the hotel query on success.
+1. Rewrite `CustomerAuthContext.tsx` — strip II dependency, use actor-only auth, store session in localStorage for persistence
+2. Edit `AuthModal` in `App.tsx` — remove II banner, remove `useInternetIdentity` usage, simplify button labels and disabled conditions
+3. Validate build (typecheck + lint + build)
