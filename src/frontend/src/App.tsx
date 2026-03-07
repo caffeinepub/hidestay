@@ -253,6 +253,157 @@ function AmenityChip({ amenity }: { amenity: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Image Lightbox
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ImageLightboxProps {
+  images: string[];
+  initialIndex: number;
+  onClose: () => void;
+}
+
+function ImageLightbox({ images, initialIndex, onClose }: ImageLightboxProps) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  const handlePrev = useCallback(
+    () =>
+      setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1)),
+    [images.length],
+  );
+  const handleNext = useCallback(
+    () =>
+      setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1)),
+    [images.length],
+  );
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") handlePrev();
+      else if (e.key === "ArrowRight") handleNext();
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handlePrev, handleNext, onClose]);
+
+  // Prevent body scroll while open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        data-ocid="image_lightbox.dialog"
+        aria-label="Image gallery lightbox"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22 }}
+        className="fixed inset-0 z-[100] bg-black/92 flex items-center justify-center"
+        onClick={onClose}
+      >
+        {/* Image counter badge */}
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-10 bg-black/60 backdrop-blur-md rounded-full px-4 py-1.5 text-white text-sm font-semibold border border-white/15 select-none">
+          {currentIndex + 1} / {images.length}
+        </div>
+
+        {/* Close button */}
+        <button
+          type="button"
+          data-ocid="image_lightbox.close_button"
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 w-10 h-10 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-colors"
+          aria-label="Close lightbox"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Prev button */}
+        {images.length > 1 && (
+          <button
+            type="button"
+            data-ocid="image_lightbox.prev_button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrev();
+            }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-colors"
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+        )}
+
+        {/* Next button */}
+        {images.length > 1 && (
+          <button
+            type="button"
+            data-ocid="image_lightbox.next_button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNext();
+            }}
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 w-11 h-11 bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-colors"
+            aria-label="Next image"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        )}
+
+        {/* Main image */}
+        <button
+          type="button"
+          className="flex items-center justify-center w-full h-full px-16 py-16 bg-transparent border-0 cursor-default"
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Current photo"
+        >
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={currentIndex}
+              src={images[currentIndex]}
+              alt={`View ${currentIndex + 1} of ${images.length}`}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.03 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              className="max-h-[90vh] max-w-[92vw] object-contain rounded-xl shadow-2xl"
+              draggable={false}
+            />
+          </AnimatePresence>
+        </button>
+
+        {/* Dot indicators */}
+        {images.length > 1 && (
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {images.map((src, i) => (
+              <button
+                key={src}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentIndex(i);
+                }}
+                className={`rounded-full transition-all duration-200 ${
+                  i === currentIndex
+                    ? "w-5 h-1.5 bg-white"
+                    : "w-1.5 h-1.5 bg-white/40"
+                }`}
+                aria-label={`Go to photo ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hotel Detail Page
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -272,6 +423,12 @@ function HotelDetailPage({
   onBookNow,
 }: HotelDetailPageProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const openLightbox = (idx: number) => {
+    setLightboxIndex(idx);
+    setLightboxOpen(true);
+  };
 
   const {
     data: hotel,
@@ -298,7 +455,7 @@ function HotelDetailPage({
 
   // Derived image sources — prefer uploaded images, fall back to seeded images
   const uploadedUrls = imageUrlsData ?? [];
-  const imageSrcs =
+  const rawImageSrcs =
     uploadedUrls.length > 0
       ? uploadedUrls
       : hotel
@@ -308,6 +465,11 @@ function HotelDetailPage({
             getHotelImageSrc(((hotel.imageIndex + 1n) % 15n) + 1n),
           ]
         : ["/assets/generated/rishikesh-hotel-1.dim_800x500.jpg"];
+  // Final guard: ensure array is never empty
+  const imageSrcs =
+    rawImageSrcs.length > 0
+      ? rawImageSrcs
+      : ["/assets/generated/rishikesh-hotel-1.dim_800x500.jpg"];
 
   const handlePrevImage = () =>
     setActiveImageIndex((prev) =>
@@ -467,65 +629,112 @@ function HotelDetailPage({
           {/* Desktop: adaptive layout based on image count */}
           <div className="hidden lg:block">
             {imageSrcs.length === 1 && (
-              <div className="relative h-[380px] rounded-2xl overflow-hidden">
+              <button
+                type="button"
+                className="relative h-[380px] rounded-2xl overflow-hidden cursor-pointer group/img w-full"
+                onClick={() => openLightbox(0)}
+                aria-label={`View ${hotel.name} photo in full screen`}
+              >
                 <img
                   data-ocid="hotel_detail.gallery_image.1"
                   src={imageSrcs[0]}
                   alt={`${hotel.name} - main view`}
-                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-[1.03]"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
-              </div>
+                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 pointer-events-none flex items-center justify-center">
+                  <Eye className="w-8 h-8 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-300" />
+                </div>
+              </button>
             )}
             {imageSrcs.length === 2 && (
               <div className="grid grid-cols-2 gap-3 h-[380px] rounded-2xl overflow-hidden">
                 {imageSrcs.map((src, idx) => (
-                  <div key={src} className="relative overflow-hidden">
+                  <button
+                    key={src}
+                    type="button"
+                    className="relative overflow-hidden cursor-pointer group/img"
+                    onClick={() => openLightbox(idx)}
+                    aria-label={`View photo ${idx + 1} in full screen`}
+                  >
                     <img
                       data-ocid={`hotel_detail.gallery_image.${idx + 1}`}
                       src={src}
                       alt={`${hotel.name} - view ${idx + 1}`}
-                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-[1.03]"
                     />
-                  </div>
+                    <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 pointer-events-none flex items-center justify-center">
+                      <Eye className="w-7 h-7 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-300" />
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
             {imageSrcs.length >= 3 && (
               <div className="grid grid-cols-3 gap-3 h-[380px] rounded-2xl overflow-hidden">
-                <div className="col-span-2 relative overflow-hidden">
+                <button
+                  type="button"
+                  className="col-span-2 relative overflow-hidden cursor-pointer group/img"
+                  onClick={() => openLightbox(0)}
+                  aria-label={`View ${hotel.name} main photo in full screen`}
+                >
                   <img
                     data-ocid="hotel_detail.gallery_image.1"
                     src={imageSrcs[0]}
                     alt={`${hotel.name} - main view`}
-                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-[1.03]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
-                </div>
+                  <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 pointer-events-none flex items-center justify-center">
+                    <Eye className="w-8 h-8 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-300" />
+                  </div>
+                </button>
                 <div className="flex flex-col gap-3">
-                  <div className="flex-1 relative overflow-hidden rounded-tr-2xl">
+                  <button
+                    type="button"
+                    className="flex-1 relative overflow-hidden rounded-tr-2xl cursor-pointer group/img"
+                    onClick={() => openLightbox(1)}
+                    aria-label="View photo 2 in full screen"
+                  >
                     <img
                       data-ocid="hotel_detail.gallery_image.2"
                       src={imageSrcs[1]}
                       alt={`${hotel.name} - view 2`}
-                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-[1.03]"
                     />
-                  </div>
-                  <div className="flex-1 relative overflow-hidden rounded-br-2xl">
+                    <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 pointer-events-none flex items-center justify-center">
+                      <Eye className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-300" />
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 relative overflow-hidden rounded-br-2xl cursor-pointer group/img"
+                    onClick={() => openLightbox(2)}
+                    aria-label={
+                      imageSrcs.length > 3
+                        ? `View all ${imageSrcs.length} photos`
+                        : "View photo 3 in full screen"
+                    }
+                  >
                     <img
                       data-ocid="hotel_detail.gallery_image.3"
                       src={imageSrcs[2]}
                       alt={`${hotel.name} - view 3`}
-                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover/img:scale-[1.03]"
                     />
                     {imageSrcs.length > 3 && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
                         <span className="text-white font-display font-bold text-xl">
                           +{imageSrcs.length - 3} more
                         </span>
                       </div>
                     )}
-                  </div>
+                    {imageSrcs.length <= 3 && (
+                      <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 pointer-events-none flex items-center justify-center">
+                        <Eye className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 transition-opacity duration-300" />
+                      </div>
+                    )}
+                  </button>
                 </div>
               </div>
             )}
@@ -544,7 +753,8 @@ function HotelDetailPage({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -30 }}
                   transition={{ duration: 0.25 }}
-                  className="w-full h-full object-cover absolute inset-0"
+                  className="w-full h-full object-cover absolute inset-0 cursor-pointer"
+                  onClick={() => openLightbox(activeImageIndex)}
                 />
               </AnimatePresence>
             )}
@@ -872,6 +1082,15 @@ function HotelDetailPage({
           </Button>
         </div>
       </div>
+
+      {/* ── Image Lightbox */}
+      {lightboxOpen && (
+        <ImageLightbox
+          images={imageSrcs}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </motion.div>
   );
 }
@@ -900,7 +1119,13 @@ function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
       }}
     >
       {/* Image */}
-      <div className="relative overflow-hidden h-[210px]">
+      <button
+        type="button"
+        data-ocid={`hotel.card_image.${index}`}
+        className="relative overflow-hidden h-[210px] cursor-pointer w-full"
+        onClick={() => onViewDetails(hotel)}
+        aria-label={`View details for ${hotel.name}`}
+      >
         <img
           src={
             hotel.imageUrls && hotel.imageUrls.length > 0
@@ -912,6 +1137,10 @@ function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
           loading="lazy"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+        {/* Hover hint overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors duration-300 flex items-center justify-center">
+          <Eye className="w-7 h-7 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 drop-shadow-md" />
+        </div>
 
         {/* Star badge */}
         <div className="absolute top-3 left-3">
@@ -944,7 +1173,7 @@ function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
           <MapPin className="w-3 h-3 text-white/70 flex-shrink-0" />
           <span>{hotel.city}</span>
         </div>
-      </div>
+      </button>
 
       {/* Content */}
       <div className="p-4 pb-4">
