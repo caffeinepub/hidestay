@@ -8,12 +8,11 @@ import Principal "mo:core/Principal";
 import Time "mo:core/Time";
 import Nat "mo:core/Nat";
 import Int "mo:core/Int";
-import Migration "migration";
-
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
+import Migration "migration";
 
 (with migration = Migration.run)
 actor {
@@ -35,6 +34,7 @@ actor {
     amenities : [Text];
     address : Text;
     imageIndex : Nat;
+    imageUrls : [Text];
     approvalStatus : HotelApprovalStatus;
     rules : Text;
   };
@@ -217,6 +217,60 @@ actor {
     reason : Text;
   };
 
+  // Admin-only endpoint for direct hotel addition (V1.1)
+  public shared ({ caller }) func addHotelAdmin(
+    name : Text,
+    city : Text,
+    description : Text,
+    starRating : Nat,
+    pricePerNight : Int,
+    amenities : [Text],
+    address : Text,
+    imageIndex : Nat,
+    imageUrls : [Text],
+    rules : Text,
+  ) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can add hotels directly");
+    };
+
+    let hotelId = nextHotelId;
+    let newHotel : Hotel = {
+      id = hotelId;
+      name;
+      city;
+      description;
+      starRating;
+      pricePerNight;
+      amenities;
+      address;
+      imageIndex;
+      imageUrls;
+      approvalStatus = #Approved;
+      rules;
+    };
+    hotels.add(hotelId, newHotel);
+
+    let inventory : RoomInventory = {
+      hotelId;
+      roomType = "Apartment";
+      totalRooms = 10;
+      availableRooms = 10;
+    };
+    roomInventory.add(hotelId, inventory);
+
+    nextHotelId += 1;
+    hotelId;
+  };
+
+  // New endpoint to get hotel image URLs
+  public query func getHotelImageUrls(id : Nat) : async [Text] {
+    switch (hotels.get(id)) {
+      case (null) { Runtime.trap("Hotel not found") };
+      case (?hotel) { hotel.imageUrls };
+    };
+  };
+
   // Public endpoints - no auth required
   public query func searchHotels(queryParams : HotelQueryParams) : async [Hotel] {
     hotels.values().toArray().filter(func(h) { matchesQuery(h, queryParams) });
@@ -255,6 +309,7 @@ actor {
           amenities = hotel.amenities;
           address = hotel.address;
           imageIndex = hotel.imageIndex;
+          imageUrls = hotel.imageUrls;
           approvalStatus = #Approved;
           rules = hotel.rules;
         };
@@ -281,6 +336,7 @@ actor {
           amenities = hotel.amenities;
           address = hotel.address;
           imageIndex = hotel.imageIndex;
+          imageUrls = hotel.imageUrls;
           approvalStatus = #Rejected;
           rules = hotel.rules;
         };
@@ -307,6 +363,7 @@ actor {
           amenities = hotel.amenities;
           address = hotel.address;
           imageIndex = hotel.imageIndex;
+          imageUrls = hotel.imageUrls;
           approvalStatus = #Rejected;
           rules = hotel.rules;
         };
@@ -352,6 +409,7 @@ actor {
           amenities = listing.amenities;
           address = listing.address;
           imageIndex = 0;
+          imageUrls = listing.imageUrls;
           approvalStatus = #Approved;
           rules = listing.rules;
         };
@@ -874,6 +932,13 @@ actor {
     };
   };
 
+  public query ({ caller }) func getCustomerProfile() : async ?CustomerProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view customer profiles");
+    };
+    customerProfiles.get(caller);
+  };
+
   // Hotel owner endpoints
   public query ({ caller }) func getOwnerHotel() : async Hotel {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
@@ -1117,6 +1182,7 @@ actor {
               amenities = hotel.amenities;
               address = hotel.address;
               imageIndex = hotel.imageIndex;
+              imageUrls = hotel.imageUrls;
               approvalStatus = hotel.approvalStatus;
               rules;
             };

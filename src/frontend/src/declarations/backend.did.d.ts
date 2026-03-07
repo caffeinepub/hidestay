@@ -29,9 +29,17 @@ export interface Booking {
   'checkOut' : string,
   'phone' : string,
 }
+export interface CustomerProfile {
+  'name' : string,
+  'email' : string,
+  'memberSince' : bigint,
+  'passwordHash' : string,
+  'mobile' : string,
+}
 export interface Hotel {
   'id' : bigint,
   'starRating' : bigint,
+  'imageUrls' : Array<string>,
   'city' : string,
   'pricePerNight' : bigint,
   'name' : string,
@@ -119,6 +127,21 @@ export interface _SERVICE {
   >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'addHotelAdmin' : ActorMethod<
+    [
+      string,
+      string,
+      string,
+      bigint,
+      bigint,
+      Array<string>,
+      string,
+      bigint,
+      Array<string>,
+      string,
+    ],
+    bigint
+  >,
   'approveHotel' : ActorMethod<[bigint], undefined>,
   'approvePropertyListing' : ActorMethod<[bigint], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
@@ -138,7 +161,9 @@ export interface _SERVICE {
   'getBookingsByEmail' : ActorMethod<[string], Array<Booking>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getCustomerProfile' : ActorMethod<[], [] | [CustomerProfile]>,
   'getHotel' : ActorMethod<[bigint], Hotel>,
+  'getHotelImageUrls' : ActorMethod<[bigint], Array<string>>,
   'getHotelsForAdmin' : ActorMethod<[], Array<Hotel>>,
   'getKycDocumentUrl' : ActorMethod<[bigint], string>,
   'getMyBookings' : ActorMethod<[], Array<Booking>>,

@@ -7,6 +7,13 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
+export interface CustomerProfile {
+    name: string;
+    email: string;
+    memberSince: bigint;
+    passwordHash: string;
+    mobile: string;
+}
 export interface PropertyListing {
     id: bigint;
     ownerEmail: string;
@@ -36,6 +43,7 @@ export interface HotelQueryParams {
 export interface Hotel {
     id: bigint;
     starRating: bigint;
+    imageUrls: Array<string>;
     city: string;
     pricePerNight: bigint;
     name: string;
@@ -97,6 +105,7 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
+    addHotelAdmin(name: string, city: string, description: string, starRating: bigint, pricePerNight: bigint, amenities: Array<string>, address: string, imageIndex: bigint, imageUrls: Array<string>, rules: string): Promise<bigint>;
     approveHotel(id: bigint): Promise<void>;
     approvePropertyListing(listingId: bigint): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
@@ -113,7 +122,9 @@ export interface backendInterface {
     getBookingsByEmail(email: string): Promise<Array<Booking>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getCustomerProfile(): Promise<CustomerProfile | null>;
     getHotel(id: bigint): Promise<Hotel>;
+    getHotelImageUrls(id: bigint): Promise<Array<string>>;
     getHotelsForAdmin(): Promise<Array<Hotel>>;
     getKycDocumentUrl(listingId: bigint): Promise<string>;
     getMyBookings(): Promise<Array<Booking>>;

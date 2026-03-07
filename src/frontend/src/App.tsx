@@ -262,7 +262,6 @@ interface HotelDetailPageProps {
   searchParams: SearchParams;
   onBack: () => void;
   onBookNow: (hotel: Hotel) => void;
-  uploadedImageUrls?: string[];
 }
 
 function HotelDetailPage({
@@ -271,7 +270,6 @@ function HotelDetailPage({
   searchParams: _searchParams,
   onBack,
   onBookNow,
-  uploadedImageUrls,
 }: HotelDetailPageProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
@@ -288,17 +286,28 @@ function HotelDetailPage({
     enabled: !!actor,
   });
 
+  // Fetch uploaded image URLs from backend
+  const { data: imageUrlsData } = useQuery<string[]>({
+    queryKey: ["hotelImageUrls", hotelId.toString()],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getHotelImageUrls(hotelId);
+    },
+    enabled: !!actor,
+  });
+
   // Derived image sources — prefer uploaded images, fall back to seeded images
+  const uploadedUrls = imageUrlsData ?? [];
   const imageSrcs =
-    uploadedImageUrls && uploadedImageUrls.length > 0
-      ? uploadedImageUrls
+    uploadedUrls.length > 0
+      ? uploadedUrls
       : hotel
         ? [
             getHotelImageSrc(hotel.imageIndex),
             getHotelImageSrc((hotel.imageIndex % 15n) + 1n),
             getHotelImageSrc(((hotel.imageIndex + 1n) % 15n) + 1n),
           ]
-        : [];
+        : ["/assets/generated/rishikesh-hotel-1.dim_800x500.jpg"];
 
   const handlePrevImage = () =>
     setActiveImageIndex((prev) =>
@@ -893,7 +902,11 @@ function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
       {/* Image */}
       <div className="relative overflow-hidden h-[210px]">
         <img
-          src={getHotelImageSrc(hotel.imageIndex)}
+          src={
+            hotel.imageUrls && hotel.imageUrls.length > 0
+              ? hotel.imageUrls[0]
+              : getHotelImageSrc(hotel.imageIndex)
+          }
           alt={hotel.name}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.06]"
           loading="lazy"
@@ -2904,7 +2917,11 @@ function BookingDetailPage({
           className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-lg"
         >
           <img
-            src={getHotelImageSrc(hotel.imageIndex)}
+            src={
+              hotel.imageUrls && hotel.imageUrls.length > 0
+                ? hotel.imageUrls[0]
+                : getHotelImageSrc(hotel.imageIndex)
+            }
             alt={hotel.name}
             className="w-full h-full object-cover"
           />
@@ -5432,7 +5449,6 @@ function AppInner() {
 
   const [selectedHotelId, setSelectedHotelId] = useState<bigint | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
-  const [selectedHotelImages, setSelectedHotelImages] = useState<string[]>([]);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
@@ -5548,8 +5564,6 @@ function AppInner() {
   };
 
   const handleViewDetails = (hotel: Hotel) => {
-    // Reset uploaded images — search results don't carry listing images
-    setSelectedHotelImages([]);
     setSelectedHotelId(hotel.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -5628,7 +5642,6 @@ function AppInner() {
               searchParams={searchParams}
               onBack={handleBackFromDetail}
               onBookNow={handleBookNow}
-              uploadedImageUrls={selectedHotelImages}
             />
           </motion.div>
         ) : (

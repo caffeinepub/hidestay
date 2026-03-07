@@ -53,6 +53,13 @@ export const UserProfile = IDL.Record({
   'email' : IDL.Text,
   'phone' : IDL.Text,
 });
+export const CustomerProfile = IDL.Record({
+  'name' : IDL.Text,
+  'email' : IDL.Text,
+  'memberSince' : IDL.Int,
+  'passwordHash' : IDL.Text,
+  'mobile' : IDL.Text,
+});
 export const HotelApprovalStatus = IDL.Variant({
   'Approved' : IDL.Null,
   'Rejected' : IDL.Null,
@@ -61,6 +68,7 @@ export const HotelApprovalStatus = IDL.Variant({
 export const Hotel = IDL.Record({
   'id' : IDL.Nat,
   'starRating' : IDL.Nat,
+  'imageUrls' : IDL.Vec(IDL.Text),
   'city' : IDL.Text,
   'pricePerNight' : IDL.Int,
   'name' : IDL.Text,
@@ -137,6 +145,22 @@ export const idlService = IDL.Service({
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'addHotelAdmin' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+        IDL.Int,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+        IDL.Nat,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+      ],
+      [IDL.Nat],
+      [],
+    ),
   'approveHotel' : IDL.Func([IDL.Nat], [], []),
   'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
@@ -157,7 +181,9 @@ export const idlService = IDL.Service({
   'getBookingsByEmail' : IDL.Func([IDL.Text], [IDL.Vec(Booking)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getCustomerProfile' : IDL.Func([], [IDL.Opt(CustomerProfile)], ['query']),
   'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+  'getHotelImageUrls' : IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
   'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
   'getKycDocumentUrl' : IDL.Func([IDL.Nat], [IDL.Text], ['query']),
   'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
@@ -263,6 +289,13 @@ export const idlFactory = ({ IDL }) => {
     'email' : IDL.Text,
     'phone' : IDL.Text,
   });
+  const CustomerProfile = IDL.Record({
+    'name' : IDL.Text,
+    'email' : IDL.Text,
+    'memberSince' : IDL.Int,
+    'passwordHash' : IDL.Text,
+    'mobile' : IDL.Text,
+  });
   const HotelApprovalStatus = IDL.Variant({
     'Approved' : IDL.Null,
     'Rejected' : IDL.Null,
@@ -271,6 +304,7 @@ export const idlFactory = ({ IDL }) => {
   const Hotel = IDL.Record({
     'id' : IDL.Nat,
     'starRating' : IDL.Nat,
+    'imageUrls' : IDL.Vec(IDL.Text),
     'city' : IDL.Text,
     'pricePerNight' : IDL.Int,
     'name' : IDL.Text,
@@ -347,6 +381,22 @@ export const idlFactory = ({ IDL }) => {
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'addHotelAdmin' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Int,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+          IDL.Nat,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+        ],
+        [IDL.Nat],
+        [],
+      ),
     'approveHotel' : IDL.Func([IDL.Nat], [], []),
     'approvePropertyListing' : IDL.Func([IDL.Nat], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
@@ -367,7 +417,9 @@ export const idlFactory = ({ IDL }) => {
     'getBookingsByEmail' : IDL.Func([IDL.Text], [IDL.Vec(Booking)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getCustomerProfile' : IDL.Func([], [IDL.Opt(CustomerProfile)], ['query']),
     'getHotel' : IDL.Func([IDL.Nat], [Hotel], ['query']),
+    'getHotelImageUrls' : IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
     'getHotelsForAdmin' : IDL.Func([], [IDL.Vec(Hotel)], ['query']),
     'getKycDocumentUrl' : IDL.Func([IDL.Nat], [IDL.Text], ['query']),
     'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
