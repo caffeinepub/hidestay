@@ -13,6 +13,7 @@ import {
 } from "react";
 
 const SESSION_KEY = "hidestay_customer_session";
+const PROFILE_CACHE_KEY = "hidestay_customer_profile";
 
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -21,6 +22,28 @@ async function hashPassword(password: string): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function loadCachedProfile(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (raw) return JSON.parse(raw) as UserProfile;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function saveCachedProfile(profile: UserProfile | null) {
+  try {
+    if (profile) {
+      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(PROFILE_CACHE_KEY);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 interface CustomerAuthState {
@@ -57,7 +80,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const customerIdentity = useCustomerIdentity();
 
-  // Whether the user has completed email+password login this session
+  // Whether the user has completed email+password login
   const [isEmailAuthed, setIsEmailAuthed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(SESSION_KEY) === "true";
@@ -66,6 +89,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  // Cached profile for instant restore on page load
+  const [cachedProfile, setCachedProfile] = useState<UserProfile | null>(() =>
+    loadCachedProfile(),
+  );
+
   // Persist session flag to localStorage
   useEffect(() => {
     try {
@@ -73,6 +101,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(SESSION_KEY, "true");
       } else {
         localStorage.removeItem(SESSION_KEY);
+        saveCachedProfile(null);
+        setCachedProfile(null);
       }
     } catch {
       // ignore storage errors
@@ -87,8 +117,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       const actor = await createActorWithConfig({
         agentOptions: { identity: customerIdentity },
       });
-      // NOTE: Do NOT call _initializeAccessControlWithSecret here.
-      // The backend no longer requires role registration for customer endpoints.
       return actor;
     },
     staleTime: Number.POSITIVE_INFINITY,
@@ -97,18 +125,30 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   // Fetch profile whenever actor is ready and user is email-authed
   const {
-    data: profile,
+    data: fetchedProfile,
     isLoading: isLoadingProfile,
     refetch: refetchProfile,
   } = useQuery<UserProfile | null>({
     queryKey: ["customer-profile"],
     queryFn: async () => {
       if (!customerActor) return null;
-      return customerActor.getCallerUserProfile();
+      const result = await customerActor.getCallerUserProfile();
+      return result;
     },
     enabled: isEmailAuthed && !!customerActor,
     staleTime: 60_000,
   });
+
+  // Keep the cached profile in sync with the fetched one
+  useEffect(() => {
+    if (fetchedProfile) {
+      saveCachedProfile(fetchedProfile);
+      setCachedProfile(fetchedProfile);
+    }
+  }, [fetchedProfile]);
+
+  // Active profile: prefer fetched, fall back to cached during loading
+  const profile = fetchedProfile ?? (isEmailAuthed ? cachedProfile : null);
 
   const { mutateAsync: loginMutate } = useMutation({
     mutationFn: async ({
@@ -206,17 +246,19 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setIsEmailAuthed(false);
+    saveCachedProfile(null);
+    setCachedProfile(null);
     queryClient.removeQueries({ queryKey: ["customer-profile"] });
   }, [queryClient]);
 
-  // Authenticated when session is active and profile has loaded (or session flag set)
-  const isAuthenticated = isEmailAuthed && (!!profile || !isLoadingProfile);
+  // Authenticated when session flag is set AND profile is available (from cache or fetched)
+  const isAuthenticated = isEmailAuthed && !!profile;
 
   return (
     <CustomerAuthContext.Provider
       value={{
         isAuthenticated,
-        profile: profile ?? null,
+        profile,
         isLoadingProfile,
         customerActor: customerActor ?? null,
         login,
