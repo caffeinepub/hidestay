@@ -51,6 +51,7 @@ import {
   Crown,
   Eye,
   EyeOff,
+  Heart,
   Home,
   ImageIcon,
   Info,
@@ -88,6 +89,11 @@ import {
   PropertyListingStatus,
   Status,
 } from "./backend.d";
+import {
+  AccountDashboard,
+  type AccountTab,
+  useSavedHotels,
+} from "./components/AccountDashboard";
 import { AdminPasswordAuth } from "./components/AdminPasswordAuth";
 import { OwnerDashboard, useIsOwner } from "./components/OwnerDashboard";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
@@ -1104,9 +1110,37 @@ interface HotelCardProps {
   hotel: Hotel;
   index: number;
   onViewDetails: (hotel: Hotel) => void;
+  onRequireAuth?: () => void;
 }
 
-function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
+function HotelCard({
+  hotel,
+  index,
+  onViewDetails,
+  onRequireAuth,
+}: HotelCardProps) {
+  const { isAuthenticated, profile } = useCustomerAuth();
+  const { isHotelSaved, saveHotel, unsaveHotel } = useSavedHotels(
+    profile?.email,
+  );
+  const hotelNum = Number(hotel.id);
+  const isSaved = isHotelSaved(hotelNum);
+
+  const handleHeartClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      onRequireAuth?.();
+      return;
+    }
+    if (isSaved) {
+      unsaveHotel(hotelNum);
+      toast.success("Removed from saved hotels");
+    } else {
+      saveHotel(hotelNum);
+      toast.success("Saved to your wishlist!");
+    }
+  };
+
   return (
     <motion.div
       data-ocid={`hotel.card.${index}`}
@@ -1160,8 +1194,18 @@ function HotelCard({ hotel, index, onViewDetails }: HotelCardProps) {
           </div>
         </div>
 
-        {/* Pay at Hotel badge */}
-        <div className="absolute top-3 right-3">
+        {/* Pay at Hotel badge + Heart button */}
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleHeartClick}
+            className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-all duration-200 hover:scale-110 active:scale-95 ${isSaved ? "bg-white" : "bg-black/40 backdrop-blur-md border border-white/20"}`}
+            aria-label={isSaved ? "Remove from saved" : "Save hotel"}
+          >
+            <Heart
+              className={`w-4 h-4 transition-colors duration-200 ${isSaved ? "text-brand fill-brand" : "text-white"}`}
+            />
+          </button>
           <div className="bg-green-600/90 backdrop-blur-md rounded-lg px-2 py-1 border border-green-400/30">
             <span className="text-white text-[10px] font-bold">
               Pay at Hotel
@@ -3478,6 +3522,7 @@ function BookingDetailPage({ bookingId, onBack }: BookingDetailPageProps) {
   );
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: kept for backward compat
 function MyBookingsPage({
   open,
   onClose,
@@ -3888,6 +3933,8 @@ interface AuthModalProps {
   open: boolean;
   onClose: () => void;
   defaultTab?: "login" | "signup";
+  /** Called after a successful login or registration, before modal closes */
+  onSuccess?: () => void;
 }
 
 function PasswordInput({
@@ -3976,7 +4023,12 @@ function PasswordStrengthBar({ password }: { password: string }) {
   );
 }
 
-function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
+function AuthModal({
+  open,
+  onClose,
+  defaultTab = "login",
+  onSuccess,
+}: AuthModalProps) {
   const {
     login,
     register,
@@ -4064,10 +4116,13 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
             </p>
             <Button
               data-ocid="auth.continue_button"
-              onClick={handleClose}
+              onClick={() => {
+                handleClose();
+                onSuccess?.();
+              }}
               className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white rounded-xl"
             >
-              Continue
+              Open My Account
             </Button>
           </div>
         </DialogContent>
@@ -4089,6 +4144,7 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
     if (result.success) {
       toast.success("Signed in successfully!");
       handleClose();
+      onSuccess?.();
     } else {
       setLoginError(result.error ?? "Login failed. Please try again.");
     }
@@ -4140,6 +4196,11 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
         confirmPassword: "",
       });
       toast.success("Account created successfully!");
+      // Brief delay then open dashboard
+      setTimeout(() => {
+        handleClose();
+        onSuccess?.();
+      }, 1500);
     } else {
       setSignupError(result.error ?? "Registration failed. Please try again.");
     }
@@ -4499,10 +4560,13 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
                 </p>
                 <Button
                   data-ocid="auth.done_button"
-                  onClick={handleClose}
+                  onClick={() => {
+                    handleClose();
+                    onSuccess?.();
+                  }}
                   className="w-full bg-brand hover:bg-[oklch(0.45_0.22_25.5)] text-white font-semibold rounded-xl"
                 >
-                  Start Exploring
+                  Go to My Account
                 </Button>
               </motion.div>
             ) : (
@@ -4839,6 +4903,7 @@ interface CustomerProfilePageProps {
   onMyBookingsClick: () => void;
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: kept for backward compat
 function CustomerProfilePage({
   open,
   onClose,
@@ -6181,14 +6246,22 @@ function AppInner() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [listPropertyModalOpen, setListPropertyModalOpen] = useState(false);
   const [pendingListProperty, setPendingListProperty] = useState(false);
-  const [profilePageOpen, setProfilePageOpen] = useState(false);
+  // Account Dashboard replaces separate profilePageOpen + myBookingsPanelOpen
+  const [accountDashboardOpen, setAccountDashboardOpen] = useState(false);
+  const [accountDashboardTab, setAccountDashboardTab] =
+    useState<AccountTab>("profile");
   const [superAdminOpen, setSuperAdminOpen] = useState(
     () => window.location.pathname === "/admin",
   );
   const [adminOtpVerified, setAdminOtpVerified] = useState(false);
   const [adminPasswordVerified, setAdminPasswordVerified] = useState(false);
-  const [myBookingsPanelOpen, setMyBookingsPanelOpen] = useState(false);
   const [ownerDashboardOpen, setOwnerDashboardOpen] = useState(false);
+
+  // Helper to open dashboard on a specific tab
+  const openAccountDashboard = useCallback((tab: AccountTab = "profile") => {
+    setAccountDashboardTab(tab);
+    setAccountDashboardOpen(true);
+  }, []);
 
   // ── URL-based /admin routing (no router library) ──────────────────────────
   useEffect(() => {
@@ -6214,7 +6287,7 @@ function AppInner() {
   // ── Auth
   const { identity } = useInternetIdentity();
   const isIILoggedIn = !!identity;
-  const { isAuthenticated } = useCustomerAuth();
+  const { isAuthenticated, isEmailAuthed } = useCustomerAuth();
 
   // ── Admin check
   const { data: isAdmin = false } = useQuery<boolean>({
@@ -6318,12 +6391,14 @@ function AppInner() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Close profile page if user logs out
+  // Close account dashboard only when the session is fully cleared (logout).
+  // Using isEmailAuthed (the raw localStorage session flag) instead of isAuthenticated
+  // prevents the dashboard from closing during the brief async profile-load window.
   useEffect(() => {
-    if (!isAuthenticated) {
-      setProfilePageOpen(false);
+    if (!isEmailAuthed) {
+      setAccountDashboardOpen(false);
     }
-  }, [isAuthenticated]);
+  }, [isEmailAuthed]);
 
   // After login, open List Property modal if there was a pending intent
   useEffect(() => {
@@ -6351,7 +6426,15 @@ function AppInner() {
 
       {/* Header — always visible */}
       <Header
-        onLoginClick={() => setAuthModalOpen(true)}
+        onLoginClick={() => {
+          // If the user already has a session, open their account dashboard
+          // instead of showing the login modal again.
+          if (isEmailAuthed) {
+            openAccountDashboard("profile");
+          } else {
+            setAuthModalOpen(true);
+          }
+        }}
         onListPropertyClick={() => {
           if (isAuthenticated) {
             setListPropertyModalOpen(true);
@@ -6361,9 +6444,9 @@ function AppInner() {
           }
         }}
         onAdminClick={openAdminPanel}
-        onMyBookingsClick={() => setMyBookingsPanelOpen(true)}
+        onMyBookingsClick={() => openAccountDashboard("bookings")}
         onOwnerDashboardClick={() => setOwnerDashboardOpen(true)}
-        onProfileClick={() => setProfilePageOpen(true)}
+        onProfileClick={() => openAccountDashboard("profile")}
         onLogoClick={handleBackFromDetail}
         isAdmin={isAdmin}
         isOwner={isOwner}
@@ -6509,6 +6592,7 @@ function AppInner() {
                           hotel={hotel}
                           index={i + 1}
                           onViewDetails={handleViewDetails}
+                          onRequireAuth={() => setAuthModalOpen(true)}
                         />
                       ))}
                     </div>
@@ -6576,16 +6660,21 @@ function AppInner() {
       />
 
       {/* Auth Modal (Email + Password) */}
-      <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
-
-      {/* Customer Profile Page */}
-      <CustomerProfilePage
-        open={profilePageOpen}
-        onClose={() => setProfilePageOpen(false)}
-        onMyBookingsClick={() => {
-          setProfilePageOpen(false);
-          setMyBookingsPanelOpen(true);
+      <AuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          // After successful login/signup, open the My Account dashboard
+          setAuthModalOpen(false);
+          openAccountDashboard("profile");
         }}
+      />
+
+      {/* Account Dashboard (replaces CustomerProfilePage + MyBookingsPage) */}
+      <AccountDashboard
+        open={accountDashboardOpen}
+        onClose={() => setAccountDashboardOpen(false)}
+        initialTab={accountDashboardTab}
       />
 
       {/* List Property Modal */}
@@ -6618,17 +6707,6 @@ function AppInner() {
         onOtpVerified={() => setAdminOtpVerified(true)}
         onSessionTimeout={() => setAdminOtpVerified(false)}
         adminPrincipalId={identity?.getPrincipal().toString() ?? ""}
-      />
-
-      {/* My Bookings Panel */}
-      <MyBookingsPage
-        open={myBookingsPanelOpen}
-        onClose={() => setMyBookingsPanelOpen(false)}
-        isOwner={isOwner}
-        onOpenOwnerDashboard={() => {
-          setMyBookingsPanelOpen(false);
-          setOwnerDashboardOpen(true);
-        }}
       />
 
       {/* Owner Dashboard */}

@@ -48,6 +48,7 @@ function saveCachedProfile(profile: UserProfile | null) {
 
 interface CustomerAuthState {
   isAuthenticated: boolean;
+  isEmailAuthed: boolean;
   profile: UserProfile | null;
   isLoadingProfile: boolean;
   customerActor: backendInterface | null;
@@ -75,6 +76,7 @@ interface CustomerAuthState {
 
 const CustomerAuthContext = createContext<CustomerAuthState>({
   isAuthenticated: false,
+  isEmailAuthed: false,
   profile: null,
   isLoadingProfile: false,
   customerActor: null,
@@ -157,7 +159,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchedProfile]);
 
-  // Active profile: prefer fetched, fall back to cached during loading
+  // Active profile: prefer fetched, fall back to cached during loading.
+  // This ensures profile is available synchronously on first render when
+  // localStorage has both the session flag and cached profile, preventing
+  // the auth state from flickering to false before the actor loads.
   const profile = fetchedProfile ?? (isEmailAuthed ? cachedProfile : null);
 
   const { mutateAsync: loginMutate } = useMutation({
@@ -315,13 +320,17 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     queryClient.removeQueries({ queryKey: ["customer-profile"] });
   }, [queryClient]);
 
-  // Authenticated when session flag is set AND profile is available (from cache or fetched)
-  const isAuthenticated = isEmailAuthed && !!profile;
+  // Authenticated when session flag is set AND profile is available (from cache or fetched).
+  // Using cachedProfile directly ensures auth is stable from the very first render,
+  // even before the async actor/backend fetch completes.
+  const isAuthenticated =
+    isEmailAuthed && (!!fetchedProfile || !!cachedProfile);
 
   return (
     <CustomerAuthContext.Provider
       value={{
         isAuthenticated,
+        isEmailAuthed,
         profile,
         isLoadingProfile,
         customerActor: customerActor ?? null,
