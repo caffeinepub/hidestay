@@ -188,6 +188,14 @@ export interface _SERVICE {
   'registerCustomer' : ActorMethod<[string, string, string, string], undefined>,
   'rejectHotel' : ActorMethod<[bigint], undefined>,
   'rejectPropertyListing' : ActorMethod<[bigint], undefined>,
+  /**
+   * / Request password reset with OTP
+   */
+  'requestPasswordReset' : ActorMethod<[string], string>,
+  /**
+   * / Reset password with OTP
+   */
+  'resetPasswordWithOtp' : ActorMethod<[string, string, string], boolean>,
   'revokeHotelOwner' : ActorMethod<[Principal], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'searchHotels' : ActorMethod<[HotelQueryParams], Array<Hotel>>,

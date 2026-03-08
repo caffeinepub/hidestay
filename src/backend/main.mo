@@ -12,7 +12,9 @@ import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
+import Migration "migration";
 
+(with migration = Migration.run)
 actor {
   include MixinStorage();
 
@@ -54,6 +56,7 @@ actor {
   let adminLoginAttempts = Map.empty<Principal, Nat>();
   let adminOtps = Map.empty<Principal, OtpEntry>();
   let userProfiles = Map.empty<Principal, UserProfile>();
+  let passwordResetOtps = Map.empty<Text, OtpEntry>();
 
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -965,6 +968,56 @@ actor {
           memberSince = profile.memberSince;
         };
         customerProfiles.add(caller, updatedProfile);
+      };
+    };
+  };
+
+  /// Request password reset with OTP
+  public shared ({ caller }) func requestPasswordReset(email : Text) : async Text {
+    switch (emailToPrincipal.get(email)) {
+      case (null) { "NOT_FOUND" };
+      case (?_principal) {
+        let code = padToSixDigits((Int.abs(Time.now()) % 1_000_000).toText());
+        let expiresAt = Time.now() + 600_000_000_000; // 10 min
+        let entry : OtpEntry = { code; expiresAt };
+        passwordResetOtps.add(email, entry);
+        code; // Just return code for password reset, no email
+      };
+    };
+  };
+
+  /// Reset password with OTP
+  public shared ({ caller }) func resetPasswordWithOtp(email : Text, otp : Text, newPasswordHash : Text) : async Bool {
+    switch (passwordResetOtps.get(email)) {
+      case (null) { false };
+      case (?entry) {
+        if (Time.now() > entry.expiresAt) {
+          passwordResetOtps.remove(email);
+          return false;
+        };
+
+        if (entry.code != otp) { return false };
+
+        switch (emailToPrincipal.get(email)) {
+          case (null) { false };
+          case (?principal) {
+            switch (customerProfiles.get(principal)) {
+              case (null) { false };
+              case (?profile) {
+                let updatedProfile : CustomerProfile = {
+                  name = profile.name;
+                  email = profile.email;
+                  mobile = profile.mobile;
+                  passwordHash = newPasswordHash;
+                  memberSince = profile.memberSince;
+                };
+                customerProfiles.add(principal, updatedProfile);
+                passwordResetOtps.remove(email);
+                true;
+              };
+            };
+          };
+        };
       };
     };
   };

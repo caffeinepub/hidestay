@@ -147,6 +147,14 @@ export interface backendInterface {
     registerCustomer(name: string, email: string, mobile: string, passwordHash: string): Promise<void>;
     rejectHotel(id: bigint): Promise<void>;
     rejectPropertyListing(listingId: bigint): Promise<void>;
+    /**
+     * / Request password reset with OTP
+     */
+    requestPasswordReset(email: string): Promise<string>;
+    /**
+     * / Reset password with OTP
+     */
+    resetPasswordWithOtp(email: string, otp: string, newPasswordHash: string): Promise<boolean>;
     revokeHotelOwner(user: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;

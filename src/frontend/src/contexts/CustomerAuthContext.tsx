@@ -63,6 +63,14 @@ interface CustomerAuthState {
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refetchProfile: () => void;
+  requestPasswordReset: (
+    email: string,
+  ) => Promise<{ success: boolean; otp?: string; error?: string }>;
+  resetPasswordWithOtp: (
+    email: string,
+    otp: string,
+    newPassword: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthState>({
@@ -74,6 +82,8 @@ const CustomerAuthContext = createContext<CustomerAuthState>({
   register: async (_name, _email, _mobile, _password) => ({ success: false }),
   logout: () => {},
   refetchProfile: () => {},
+  requestPasswordReset: async () => ({ success: false }),
+  resetPasswordWithOtp: async () => ({ success: false }),
 });
 
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
@@ -244,6 +254,60 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     [customerActor, registerMutate, queryClient],
   );
 
+  const requestPasswordReset = useCallback(
+    async (
+      email: string,
+    ): Promise<{ success: boolean; otp?: string; error?: string }> => {
+      if (!customerActor)
+        return { success: false, error: "Not connected. Please try again." };
+      try {
+        const result = await customerActor.requestPasswordReset(email);
+        if (result === "NOT_FOUND") {
+          return {
+            success: false,
+            error: "No account found with this email.",
+          };
+        }
+        return { success: true, otp: result };
+      } catch (_e) {
+        return {
+          success: false,
+          error: "Failed to send reset code. Please try again.",
+        };
+      }
+    },
+    [customerActor],
+  );
+
+  const resetPasswordWithOtp = useCallback(
+    async (
+      email: string,
+      otp: string,
+      newPassword: string,
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!customerActor)
+        return { success: false, error: "Not connected. Please try again." };
+      try {
+        const newPasswordHash = await hashPassword(newPassword);
+        const success = await customerActor.resetPasswordWithOtp(
+          email,
+          otp,
+          newPasswordHash,
+        );
+        if (success) {
+          return { success: true };
+        }
+        return { success: false, error: "Invalid or expired OTP." };
+      } catch (_e) {
+        return {
+          success: false,
+          error: "Password reset failed. Please try again.",
+        };
+      }
+    },
+    [customerActor],
+  );
+
   const logout = useCallback(() => {
     setIsEmailAuthed(false);
     saveCachedProfile(null);
@@ -265,6 +329,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         refetchProfile: () => refetchProfile(),
+        requestPasswordReset,
+        resetPasswordWithOtp,
       }}
     >
       {children}

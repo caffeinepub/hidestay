@@ -1,42 +1,37 @@
-# HIDESTAY – Header User Account System Upgrade
+# HIDESTAY
 
 ## Current State
-- Header shows "Sign In" text button when unauthenticated; when authenticated it shows an avatar dropdown with initials, "My Profile", "My Bookings", and "Sign Out".
-- `CustomerProfile` backend type has: `name`, `email`, `mobile`, `passwordHash`, `memberSince`.
-- `CustomerProfilePage` shows Name, Email, Mobile, Change Password, My Bookings link, and Sign Out.
-- Profile hero shows initials in a square box; no profile photo support.
-- No Date of Birth field in the backend or frontend.
-- The header "Sign In" button is a rectangular text button.
+- Customer login uses email + password only (no Internet Identity)
+- CustomerAuthContext manages session via localStorage
+- AuthModal has Sign In and Create Account tabs
+- Backend has `loginCustomer`, `registerCustomer`, `changeCustomerPassword`, `emailToPrincipal` map
+- No forgot password flow exists for customers
+- Email is disabled on the current plan — OTP must be demo mode (shown on screen)
 
 ## Requested Changes (Diff)
 
 ### Add
-- `dateOfBirth: Text` and `photoUrl: Text` fields to `CustomerProfile` Motoko type.
-- `updateCustomerProfileFull(name, email, mobile, dateOfBirth, photoUrl)` backend endpoint.
-- Profile Photo upload in the `CustomerProfilePage` (client-side base64 or blob URL, stored as `photoUrl` text).
-- Date of Birth field in the profile view and edit form.
-- Round profile avatar icon in the header (replaces the rectangular sign-in button layout when logged in, and replaces the text "Sign In" with a cleaner icon button when logged out).
-- Dropdown menu with: My Profile, My Bookings, Logout (already exists but avatar shape to become fully round).
+- "Forgot Password?" link below the password field on the Sign In tab in AuthModal
+- Forgot Password view inside AuthModal (step 1: enter email, step 2: enter OTP + new password, step 3: success)
+- Backend: `requestPasswordReset(email)` — generates 6-digit OTP (demo mode), stores with 10-min expiry keyed by email, returns OTP directly
+- Backend: `resetPasswordWithOtp(email, otp, newPasswordHash)` — validates OTP, resets password, clears OTP
+- Frontend: demo OTP amber banner showing the reset code (same pattern as admin OTP)
+- Password strength bar on the new password field
+- After successful reset, auto-switch to Sign In tab with success message
 
 ### Modify
-- Header avatar: change from rounded-xl pill shape to a purely circular avatar (`rounded-full`), no name/chevron text beside it — just the round avatar icon.
-- When logged out: replace the rectangular "Sign In" button with a round icon-only avatar placeholder button.
-- `CustomerProfilePage`: add Date of Birth field (view + edit), add Profile Photo upload/preview.
-- Backend `CustomerProfile` type: add `dateOfBirth` and `photoUrl` with empty string defaults.
-- `updateCustomerProfile` → update to also persist `dateOfBirth` and `photoUrl`.
-- `registerCustomer` → initialize `dateOfBirth` and `photoUrl` as empty strings.
-- `backend.d.ts` → add new fields to `CustomerProfile`, add new endpoint signature.
-- `CustomerAuthContext` → pass through the extended profile fields.
+- AuthModal: add `forgotPassword` view state alongside `login` and `signup`
+- CustomerAuthContext: expose `requestPasswordReset` and `resetPasswordWithOtp` helpers
+- backend.d.ts: add the two new function signatures
 
 ### Remove
-- Nothing removed; "My Bookings" button in the header (beside the avatar) can remain for convenience.
+- Nothing removed
 
 ## Implementation Plan
-1. Update Motoko `CustomerProfile` type to include `dateOfBirth: Text` and `photoUrl: Text`.
-2. Update `registerCustomer`, `updateCustomerProfile`, `changeCustomerPassword`, and `getCustomerProfile` to carry the new fields.
-3. Add new `updateCustomerProfileFull` endpoint accepting all fields including dateOfBirth and photoUrl.
-4. Update `backend.d.ts` with the new type fields and endpoint.
-5. Update `CustomerAuthContext` to expose extended profile (typecast as needed).
-6. In the Header component: make avatar button fully round (`rounded-full`), remove name/chevron text from the authenticated state, add a round icon-only "Sign In" button for unauthenticated state.
-7. In `CustomerProfilePage`: add Date of Birth field to view and edit form; add profile photo upload (file input → base64 → stored in `photoUrl`); display photo in the hero circle.
-8. Validate and fix build errors.
+1. Add `resetTokens` map and helper functions to Motoko backend
+2. Add `requestPasswordReset` and `resetPasswordWithOtp` public functions to backend
+3. Update backend.d.ts with the two new method signatures
+4. Add `requestPasswordReset` and `resetPasswordWithOtp` to CustomerAuthContext
+5. Add Forgot Password view to AuthModal with 3-step flow (email → OTP+new password → success)
+6. Add "Forgot Password?" link below password field in login tab
+7. Validate build

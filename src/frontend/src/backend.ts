@@ -247,6 +247,14 @@ export interface backendInterface {
     registerCustomer(name: string, email: string, mobile: string, passwordHash: string): Promise<void>;
     rejectHotel(id: bigint): Promise<void>;
     rejectPropertyListing(listingId: bigint): Promise<void>;
+    /**
+     * / Request password reset with OTP
+     */
+    requestPasswordReset(email: string): Promise<string>;
+    /**
+     * / Reset password with OTP
+     */
+    resetPasswordWithOtp(email: string, otp: string, newPasswordHash: string): Promise<boolean>;
     revokeHotelOwner(user: Principal): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     searchHotels(queryParams: HotelQueryParams): Promise<Array<Hotel>>;
@@ -863,6 +871,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.rejectPropertyListing(arg0);
+            return result;
+        }
+    }
+    async requestPasswordReset(arg0: string): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.requestPasswordReset(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.requestPasswordReset(arg0);
+            return result;
+        }
+    }
+    async resetPasswordWithOtp(arg0: string, arg1: string, arg2: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.resetPasswordWithOtp(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.resetPasswordWithOtp(arg0, arg1, arg2);
             return result;
         }
     }
