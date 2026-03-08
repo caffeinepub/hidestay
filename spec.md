@@ -1,35 +1,42 @@
-# HIDESTAY
+# HIDESTAY – Header User Account System Upgrade
 
 ## Current State
-
-The app uses a dual-identity system:
-- **Hotel owners / Super Admin**: Internet Identity (II) via `useInternetIdentity` hook, principal-based RBAC
-- **Customers**: Email + password login, but `registerCustomer` and all customer endpoints require `#user` role via `AccessControl.hasPermission`, which internally calls `Runtime.trap("User is not registered")` for any unknown principal — meaning any caller who hasn't been registered via `_initializeAccessControlWithSecret` (the II flow) is blocked from calling these endpoints
-
-This means:
-- New customers (without II) hit "Unauthorized: Only users can register" when calling `registerCustomer`
-- WebView apps that don't support II cookies/redirects are completely blocked
-- `createBooking`, `getMyBookings`, `cancelBooking`, `submitPropertyListing`, `getMyPropertyListings`, `getCustomerProfile`, `updateCustomerProfile`, `changeCustomerPassword`, `isCallerHotelOwner`, `getOwnerHotel`, `getOwnerBookings`, etc. all have the same `#user` role blocker
+- Header shows "Sign In" text button when unauthenticated; when authenticated it shows an avatar dropdown with initials, "My Profile", "My Bookings", and "Sign Out".
+- `CustomerProfile` backend type has: `name`, `email`, `mobile`, `passwordHash`, `memberSince`.
+- `CustomerProfilePage` shows Name, Email, Mobile, Change Password, My Bookings link, and Sign Out.
+- Profile hero shows initials in a square box; no profile photo support.
+- No Date of Birth field in the backend or frontend.
+- The header "Sign In" button is a rectangular text button.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `isKnownPrincipal(caller)` helper in backend that returns true for any non-anonymous principal (replaces #user role check for customer endpoints)
-- `registerCustomer` callable by any non-anonymous principal without prior role registration
+- `dateOfBirth: Text` and `photoUrl: Text` fields to `CustomerProfile` Motoko type.
+- `updateCustomerProfileFull(name, email, mobile, dateOfBirth, photoUrl)` backend endpoint.
+- Profile Photo upload in the `CustomerProfilePage` (client-side base64 or blob URL, stored as `photoUrl` text).
+- Date of Birth field in the profile view and edit form.
+- Round profile avatar icon in the header (replaces the rectangular sign-in button layout when logged in, and replaces the text "Sign In" with a cleaner icon button when logged out).
+- Dropdown menu with: My Profile, My Bookings, Logout (already exists but avatar shape to become fully round).
 
 ### Modify
-- `registerCustomer`: Remove `AccessControl.hasPermission(..., #user)` check — replace with simple anonymous-principal guard
-- All customer endpoints (`createBooking`, `cancelBooking`, `getBooking`, `getMyBookings`, `submitPropertyListing`, `getMyPropertyListings`, `getCustomerProfile`, `updateCustomerProfile`, `changeCustomerPassword`, `isCallerHotelOwner`, `getCallerUserProfile`, `saveCallerUserProfile`, `getUserProfile`, `getOwnerHotel`, `getOwnerBookings`, `getOwnerRoomInventory`, `updateRoomInventory`, `getBlockedDates`, `blockDate`, `unblockDate`, `updateHotelRules`, `updateHotelTimes`, `updateBookingStatus`): Replace `AccessControl.hasPermission(..., #user)` with `not caller.isAnonymous()` guard
-- Frontend `CustomerAuthContext.tsx`: Remove any remaining II-related logic, ensure register/login work purely via email+password
-- Frontend `App.tsx`: Remove `useInternetIdentity` usage for customer flows; keep II only for Hotel Owner Dashboard and Super Admin panel
+- Header avatar: change from rounded-xl pill shape to a purely circular avatar (`rounded-full`), no name/chevron text beside it — just the round avatar icon.
+- When logged out: replace the rectangular "Sign In" button with a round icon-only avatar placeholder button.
+- `CustomerProfilePage`: add Date of Birth field (view + edit), add Profile Photo upload/preview.
+- Backend `CustomerProfile` type: add `dateOfBirth` and `photoUrl` with empty string defaults.
+- `updateCustomerProfile` → update to also persist `dateOfBirth` and `photoUrl`.
+- `registerCustomer` → initialize `dateOfBirth` and `photoUrl` as empty strings.
+- `backend.d.ts` → add new fields to `CustomerProfile`, add new endpoint signature.
+- `CustomerAuthContext` → pass through the extended profile fields.
 
 ### Remove
-- "Unauthorized: Only users can register" restriction from `registerCustomer`
-- "Unauthorized: Only users can..." restrictions from all customer-facing endpoints (replaced with non-anonymous guard)
+- Nothing removed; "My Bookings" button in the header (beside the avatar) can remain for convenience.
 
 ## Implementation Plan
-
-1. **Backend `main.mo`**: Add `isKnownPrincipal` helper. Replace all `AccessControl.hasPermission(accessControlState, caller, #user)` calls in customer/owner endpoints with `not caller.isAnonymous()`. Keep admin checks unchanged.
-2. **Frontend `CustomerAuthContext.tsx`**: Audit and ensure no II dependency remains; context is already mostly clean.
-3. **Frontend `App.tsx`**: Search for any UI that gates customer actions on II login; ensure customer login modal shows only email+password; confirm II is only referenced for admin/owner flows.
-4. **Build validation**: Run typecheck + lint + build to confirm clean compilation.
+1. Update Motoko `CustomerProfile` type to include `dateOfBirth: Text` and `photoUrl: Text`.
+2. Update `registerCustomer`, `updateCustomerProfile`, `changeCustomerPassword`, and `getCustomerProfile` to carry the new fields.
+3. Add new `updateCustomerProfileFull` endpoint accepting all fields including dateOfBirth and photoUrl.
+4. Update `backend.d.ts` with the new type fields and endpoint.
+5. Update `CustomerAuthContext` to expose extended profile (typecast as needed).
+6. In the Header component: make avatar button fully round (`rounded-full`), remove name/chevron text from the authenticated state, add a round icon-only "Sign In" button for unauthenticated state.
+7. In `CustomerProfilePage`: add Date of Birth field to view and edit form; add profile photo upload (file input → base64 → stored in `photoUrl`); display photo in the hero circle.
+8. Validate and fix build errors.

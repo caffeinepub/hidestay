@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +40,7 @@ import {
   BookOpen,
   Building2,
   Calendar,
+  Camera,
   Car,
   CheckCircle,
   ChevronDown,
@@ -4511,6 +4512,7 @@ function CustomerProfilePage({
     name: "",
     email: "",
     mobile: "",
+    dob: "",
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [pwForm, setPwForm] = useState({
@@ -4522,13 +4524,36 @@ function CustomerProfilePage({
   const [pwSuccess, setPwSuccess] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // Photo state — stored in localStorage keyed by email
+  const photoKey = profile?.email
+    ? `hidestay_profile_photo_${profile.email}`
+    : null;
+  const [photoUrl, setPhotoUrl] = useState<string | null>(() => {
+    if (typeof window === "undefined" || !profile?.email) return null;
+    return localStorage.getItem(`hidestay_profile_photo_${profile.email}`);
+  });
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // DOB state — stored in localStorage keyed by email
+  const [dob, setDob] = useState<string>(() => {
+    if (typeof window === "undefined" || !profile?.email) return "";
+    return localStorage.getItem(`hidestay_dob_${profile.email}`) ?? "";
+  });
+
   // Sync edit form when profile loads
   useEffect(() => {
     if (profile) {
+      const storedDob =
+        localStorage.getItem(`hidestay_dob_${profile.email}`) ?? "";
+      const storedPhoto =
+        localStorage.getItem(`hidestay_profile_photo_${profile.email}`) ?? null;
+      setPhotoUrl(storedPhoto);
+      setDob(storedDob);
       setEditForm({
         name: profile.name,
         email: profile.email,
         mobile: (profile as { mobile?: string }).mobile ?? profile.phone ?? "",
+        dob: storedDob,
       });
     }
   }, [profile]);
@@ -4561,6 +4586,15 @@ function CustomerProfilePage({
       );
     },
     onSuccess: () => {
+      // Save DOB and photo to localStorage
+      if (profile?.email) {
+        if (editForm.dob) {
+          localStorage.setItem(`hidestay_dob_${profile.email}`, editForm.dob);
+        } else {
+          localStorage.removeItem(`hidestay_dob_${profile.email}`);
+        }
+        setDob(editForm.dob);
+      }
       queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
       refetchProfile();
       setIsEditingProfile(false);
@@ -4607,6 +4641,25 @@ function CustomerProfilePage({
       return;
     }
     changePassword();
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (photoKey) {
+        localStorage.setItem(photoKey, dataUrl);
+      }
+      setPhotoUrl(dataUrl);
+      toast.success("Profile photo updated!");
+    };
+    reader.readAsDataURL(file);
   };
 
   if (!open) return null;
@@ -4664,10 +4717,42 @@ function CustomerProfilePage({
               {/* Red gradient header */}
               <div className="bg-gradient-to-br from-brand to-[oklch(0.42_0.22_25.5)] px-6 py-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/30 flex items-center justify-center shadow-lg">
-                    <span className="font-display text-2xl font-extrabold text-white">
-                      {initials}
-                    </span>
+                  {/* Clickable avatar with photo support */}
+                  <div className="relative group shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center shadow-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 transition-all"
+                      title="Change profile photo"
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="font-display text-2xl font-extrabold text-white">
+                          {initials}
+                        </span>
+                      )}
+                    </button>
+                    {/* Camera overlay on hover */}
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      title="Upload photo"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-brand" />
+                    </button>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePhotoChange}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h2 className="font-display text-xl font-extrabold text-white leading-tight truncate">
@@ -4679,6 +4764,17 @@ function CustomerProfilePage({
                     <p className="text-white/55 text-xs mt-1">
                       HIDESTAY Member
                     </p>
+                    {isEditingProfile && (
+                      <button
+                        type="button"
+                        data-ocid="profile.upload_photo_button"
+                        onClick={() => photoInputRef.current?.click()}
+                        className="mt-2 flex items-center gap-1.5 text-white/80 hover:text-white text-xs font-semibold transition-colors"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Change Photo
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -4823,6 +4919,28 @@ function CustomerProfilePage({
                     </div>
                   </div>
 
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="profile-dob"
+                      className="text-sm font-semibold"
+                    >
+                      Date of Birth
+                    </Label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        id="profile-dob"
+                        data-ocid="profile.dob_input"
+                        type="date"
+                        value={editForm.dob}
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, dob: e.target.value }))
+                        }
+                        className="auth-input pl-9 rounded-lg"
+                      />
+                    </div>
+                  </div>
+
                   {editError && (
                     <div
                       data-ocid="profile.edit_error_state"
@@ -4856,7 +4974,11 @@ function CustomerProfilePage({
                       onClick={() => {
                         setIsEditingProfile(false);
                         setEditError("");
-                        if (profile)
+                        if (profile) {
+                          const storedDob =
+                            localStorage.getItem(
+                              `hidestay_dob_${profile.email}`,
+                            ) ?? "";
                           setEditForm({
                             name: profile.name,
                             email: profile.email,
@@ -4864,7 +4986,9 @@ function CustomerProfilePage({
                               (profile as { mobile?: string }).mobile ??
                               profile.phone ??
                               "",
+                            dob: storedDob,
                           });
+                        }
                       }}
                       className="border-border font-semibold rounded-xl"
                     >
@@ -4913,6 +5037,29 @@ function CustomerProfilePage({
                           ?.mobile ?? profile?.phone) ? (
                           ((profile as { mobile?: string } | undefined)
                             ?.mobile ?? profile?.phone)
+                        ) : (
+                          <span className="text-muted-foreground font-normal italic">
+                            Not set
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center shrink-0">
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">
+                        Date of Birth
+                      </p>
+                      <p className="font-semibold text-foreground text-sm">
+                        {dob ? (
+                          new Date(dob).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })
                         ) : (
                           <span className="text-muted-foreground font-normal italic">
                             Not set
@@ -5147,6 +5294,11 @@ function Header({
       .join("")
       .toUpperCase() ?? "?";
 
+  // Load profile photo from localStorage
+  const headerPhotoUrl = profile?.email
+    ? localStorage.getItem(`hidestay_profile_photo_${profile.email}`)
+    : null;
+
   return (
     <header className="sticky top-0 z-50 bg-brand shadow-header">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -5229,23 +5381,27 @@ function Header({
             )}
 
             {isAuthenticated && profile ? (
-              /* User avatar dropdown */
+              /* User avatar dropdown — pure circle, no text */
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     data-ocid="header.profile_button"
-                    className="flex items-center gap-2 bg-white/15 hover:bg-white/25 border border-white/30 rounded-xl px-2.5 py-1.5 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border-2 border-white/40 flex items-center justify-center overflow-hidden transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 shrink-0"
+                    title={profile.name}
                   >
-                    <Avatar className="w-7 h-7">
-                      <AvatarFallback className="bg-white/30 text-white font-display font-extrabold text-xs">
+                    <Avatar className="w-full h-full rounded-full">
+                      {headerPhotoUrl && (
+                        <AvatarImage
+                          src={headerPhotoUrl}
+                          alt={profile.name}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <AvatarFallback className="bg-transparent text-white font-display font-extrabold text-sm w-full h-full flex items-center justify-center">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="hidden sm:block font-semibold text-white text-sm max-w-[100px] truncate">
-                      {profile.name.split(" ")[0]}
-                    </span>
-                    <ChevronDown className="w-3.5 h-3.5 text-white/70 hidden sm:block" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -5276,20 +5432,21 @@ function Header({
                     className="gap-2.5 cursor-pointer font-medium text-red-600 focus:text-red-600 focus:bg-red-50"
                   >
                     <LogOut className="w-4 h-4" />
-                    Sign Out
+                    Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button
-                data-ocid="header.login_button"
+              /* Round avatar icon for unauthenticated — replaces text Sign In button */
+              <button
+                type="button"
+                data-ocid="header.login_avatar_button"
                 onClick={onLoginClick}
-                size="sm"
-                className="bg-white text-brand hover:bg-white/90 font-semibold rounded-lg text-sm gap-1.5"
+                className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 border-2 border-white/40 flex items-center justify-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 shrink-0"
+                title="Sign In"
               >
-                <LogIn className="w-4 h-4" />
-                Sign In
-              </Button>
+                <UserCircle className="w-5 h-5 text-white" />
+              </button>
             )}
           </div>
         </div>
