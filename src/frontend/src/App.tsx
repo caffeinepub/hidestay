@@ -1240,7 +1240,6 @@ interface BookingModalProps {
   open: boolean;
   onClose: () => void;
   searchParams: SearchParams;
-  actor: import("./backend").backendInterface | null;
   onOpenAuthModal?: () => void;
 }
 
@@ -1249,10 +1248,9 @@ function BookingModal({
   open,
   onClose,
   searchParams,
-  actor,
   onOpenAuthModal,
 }: BookingModalProps) {
-  const { isAuthenticated, profile } = useCustomerAuth();
+  const { isAuthenticated, profile, customerActor: actor } = useCustomerAuth();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
@@ -2746,7 +2744,6 @@ function ListPropertyModal({
 interface MyBookingsPageProps {
   open: boolean;
   onClose: () => void;
-  actor: import("./backend").backendInterface | null;
   isOwner?: boolean;
   onOpenOwnerDashboard?: () => void;
 }
@@ -2802,7 +2799,6 @@ function formatDateDisplay(dateStr: string): string {
 interface BookingCardProps {
   booking: Booking;
   index: number;
-  actor: import("./backend").backendInterface | null;
   onCancelled: () => void;
   onViewDetails: (bookingId: bigint) => void;
 }
@@ -2810,17 +2806,20 @@ interface BookingCardProps {
 function BookingCard({
   booking,
   index,
-  actor,
   onCancelled,
   onViewDetails,
 }: BookingCardProps) {
+  const { customerActor: actor } = useCustomerAuth();
+  const { actor: sharedActor } = useActor();
+
   const { data: hotel, isLoading: hotelLoading } = useQuery<Hotel>({
     queryKey: ["hotel", booking.hotelId.toString()],
     queryFn: async () => {
-      if (!actor) throw new Error("Actor not ready");
-      return actor.getHotel(booking.hotelId);
+      const a = sharedActor ?? actor;
+      if (!a) throw new Error("Actor not ready");
+      return a.getHotel(booking.hotelId);
     },
-    enabled: !!actor,
+    enabled: !!(sharedActor ?? actor),
   });
 
   const { mutate: cancelBooking, isPending: isCancelling } = useMutation({
@@ -3046,16 +3045,13 @@ function BookingCard({
 
 interface BookingDetailPageProps {
   bookingId: bigint;
-  actor: import("./backend").backendInterface | null;
   onBack: () => void;
 }
 
-function BookingDetailPage({
-  bookingId,
-  actor,
-  onBack,
-}: BookingDetailPageProps) {
+function BookingDetailPage({ bookingId, onBack }: BookingDetailPageProps) {
   const queryClient = useQueryClient();
+  const { customerActor: actor } = useCustomerAuth();
+  const { actor: sharedActor } = useActor();
 
   const {
     data: booking,
@@ -3077,10 +3073,11 @@ function BookingDetailPage({
   } = useQuery<Hotel>({
     queryKey: ["hotel", booking?.hotelId.toString()],
     queryFn: async () => {
-      if (!actor || !booking) throw new Error("Not ready");
-      return actor.getHotel(booking.hotelId);
+      const a = sharedActor ?? actor;
+      if (!a || !booking) throw new Error("Not ready");
+      return a.getHotel(booking.hotelId);
     },
-    enabled: !!actor && !!booking,
+    enabled: !!(sharedActor ?? actor) && !!booking,
   });
 
   const { mutate: cancelBooking, isPending: isCancelling } = useMutation({
@@ -3483,11 +3480,11 @@ function BookingDetailPage({
 function MyBookingsPage({
   open,
   onClose,
-  actor,
   isOwner = false,
   onOpenOwnerDashboard,
 }: MyBookingsPageProps) {
   const queryClient = useQueryClient();
+  const { customerActor: actor } = useCustomerAuth();
   const [selectedBookingId, setSelectedBookingId] = useState<bigint | null>(
     null,
   );
@@ -3521,7 +3518,6 @@ function MyBookingsPage({
     return (
       <BookingDetailPage
         bookingId={selectedBookingId}
-        actor={actor}
         onBack={() => setSelectedBookingId(null)}
       />
     );
@@ -3705,7 +3701,6 @@ function MyBookingsPage({
                       key={booking.id.toString()}
                       booking={booking}
                       index={idx + 1}
-                      actor={actor}
                       onCancelled={handleCancelled}
                       onViewDetails={(id) => setSelectedBookingId(id)}
                     />
@@ -4496,17 +4491,20 @@ function AuthModal({ open, onClose, defaultTab = "login" }: AuthModalProps) {
 interface CustomerProfilePageProps {
   open: boolean;
   onClose: () => void;
-  actor: import("./backend").backendInterface | null;
   onMyBookingsClick: () => void;
 }
 
 function CustomerProfilePage({
   open,
   onClose,
-  actor,
   onMyBookingsClick,
 }: CustomerProfilePageProps) {
-  const { profile, logout, refetchProfile } = useCustomerAuth();
+  const {
+    profile,
+    logout,
+    refetchProfile,
+    customerActor: actor,
+  } = useCustomerAuth();
   const queryClient = useQueryClient();
 
   const [editForm, setEditForm] = useState({
@@ -6073,7 +6071,6 @@ function AppInner() {
         open={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
         searchParams={searchParams}
-        actor={actor}
         onOpenAuthModal={() => setAuthModalOpen(true)}
       />
 
@@ -6084,7 +6081,6 @@ function AppInner() {
       <CustomerProfilePage
         open={profilePageOpen}
         onClose={() => setProfilePageOpen(false)}
-        actor={actor}
         onMyBookingsClick={() => {
           setProfilePageOpen(false);
           setMyBookingsPanelOpen(true);
@@ -6127,7 +6123,6 @@ function AppInner() {
       <MyBookingsPage
         open={myBookingsPanelOpen}
         onClose={() => setMyBookingsPanelOpen(false)}
-        actor={actor}
         isOwner={isOwner}
         onOpenOwnerDashboard={() => {
           setMyBookingsPanelOpen(false);

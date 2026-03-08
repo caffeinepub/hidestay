@@ -13,8 +13,6 @@ import MixinAuthorization "authorization/MixinAuthorization";
 import MixinStorage "blob-storage/Mixin";
 import Storage "blob-storage/Storage";
 
-
-
 actor {
   include MixinStorage();
 
@@ -663,8 +661,8 @@ actor {
     checkOut : Text,
     guestCount : Nat,
   ) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create bookings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (roomInventory.get(hotelId)) {
@@ -705,8 +703,8 @@ actor {
   };
 
   public query ({ caller }) func getBooking(id : Nat) : async Booking {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view bookings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (bookings.get(id)) {
@@ -721,8 +719,8 @@ actor {
   };
 
   public shared ({ caller }) func cancelBooking(id : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can cancel bookings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (bookings.get(id)) {
@@ -782,8 +780,8 @@ actor {
     checkInTime : Text,
     checkOutTime : Text,
   ) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can submit property listings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     let listingId = nextPropertyListingId;
@@ -815,16 +813,16 @@ actor {
   };
 
   public query ({ caller }) func getMyPropertyListings() : async [PropertyListing] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view their property listings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     propertyListings.values().toArray().filter(func(l) { l.submittedBy == caller });
   };
 
   public query ({ caller }) func getMyBookings() : async [Booking] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view their bookings");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     let userBookings = bookings.values().toArray().filter(func(b) { b.owner == caller });
@@ -834,16 +832,16 @@ actor {
   };
 
   public query ({ caller }) func isCallerHotelOwner() : async Bool {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can check hotel owner status");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
     isHotelOwner(caller);
   };
 
   // User profile endpoints
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
     userProfiles.get(caller);
   };
@@ -856,8 +854,8 @@ actor {
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
     userProfiles.add(caller, profile);
   };
@@ -869,8 +867,8 @@ actor {
     mobile : Text,
     passwordHash : Text,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can register");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in to register");
     };
 
     switch (emailToPrincipal.get(email)) {
@@ -912,8 +910,8 @@ actor {
     email : Text,
     mobile : Text,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can update profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (customerProfiles.get(caller)) {
@@ -952,8 +950,8 @@ actor {
   };
 
   public shared ({ caller }) func changeCustomerPassword(newPasswordHash : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can change passwords");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (customerProfiles.get(caller)) {
@@ -972,16 +970,16 @@ actor {
   };
 
   public query ({ caller }) func getCustomerProfile() : async ?CustomerProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view customer profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
     customerProfiles.get(caller);
   };
 
   // Hotel owner endpoints
   public shared ({ caller }) func getOwnerHotel() : async Hotel {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     switch (hotelOwners.get(caller)) {
@@ -1006,8 +1004,8 @@ actor {
   };
 
   public query ({ caller }) func getOwnerBookings() : async [Booking] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1037,8 +1035,8 @@ actor {
   };
 
   public shared ({ caller }) func updateBookingStatus(bookingId : Nat, newStatus : Status) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can update booking status");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1099,8 +1097,8 @@ actor {
   };
 
   public query ({ caller }) func getOwnerRoomInventory() : async RoomInventory {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can access this");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1119,8 +1117,8 @@ actor {
   };
 
   public shared ({ caller }) func updateRoomInventory(totalRooms : Nat, availableRooms : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can update inventory");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1147,8 +1145,8 @@ actor {
   };
 
   public query ({ caller }) func getBlockedDates() : async [BlockedDate] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can access blocked dates");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1164,8 +1162,8 @@ actor {
   };
 
   public shared ({ caller }) func blockDate(date : Text, reason : Text) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can block dates");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1190,8 +1188,8 @@ actor {
   };
 
   public shared ({ caller }) func unblockDate(blockedDateId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can unblock dates");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1215,8 +1213,8 @@ actor {
   };
 
   public shared ({ caller }) func updateHotelRules(rules : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can update rules");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {
@@ -1255,8 +1253,8 @@ actor {
   };
 
   public shared ({ caller }) func updateHotelTimes(checkInTime : Text, checkOutTime : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only hotel owners can update times");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be logged in");
     };
 
     if (not isHotelOwner(caller)) {

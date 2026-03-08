@@ -1,6 +1,8 @@
+import type { backendInterface } from "@/backend";
 import type { UserProfile } from "@/backend.d";
-import { useActor } from "@/hooks/useActor";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createActorWithConfig } from "@/config";
+import { useCustomerIdentity } from "@/hooks/useCustomerIdentity";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ReactNode,
   createContext,
@@ -12,10 +14,20 @@ import {
 
 const SESSION_KEY = "hidestay_customer_session";
 
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 interface CustomerAuthState {
   isAuthenticated: boolean;
   profile: UserProfile | null;
   isLoadingProfile: boolean;
+  customerActor: backendInterface | null;
   login: (
     email: string,
     password: string,
@@ -34,6 +46,7 @@ const CustomerAuthContext = createContext<CustomerAuthState>({
   isAuthenticated: false,
   profile: null,
   isLoadingProfile: false,
+  customerActor: null,
   login: async () => ({ success: false }),
   register: async (_name, _email, _mobile, _password) => ({ success: false }),
   logout: () => {},
@@ -41,8 +54,8 @@ const CustomerAuthContext = createContext<CustomerAuthState>({
 });
 
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
-  const { actor, isFetching: actorLoading } = useActor();
   const queryClient = useQueryClient();
+  const customerIdentity = useCustomerIdentity();
 
   // Whether the user has completed email+password login this session
   const [isEmailAuthed, setIsEmailAuthed] = useState<boolean>(() => {
@@ -66,6 +79,22 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isEmailAuthed]);
 
+  // Create a customer-specific actor using the Ed25519 identity (non-anonymous)
+  const principalStr = customerIdentity.getPrincipal().toString();
+  const { data: customerActor = null } = useQuery<backendInterface | null>({
+    queryKey: ["customer-actor", principalStr],
+    queryFn: async () => {
+      const actor = await createActorWithConfig({
+        agentOptions: { identity: customerIdentity },
+      });
+      // NOTE: Do NOT call _initializeAccessControlWithSecret here.
+      // The backend no longer requires role registration for customer endpoints.
+      return actor;
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+    enabled: true,
+  });
+
   // Fetch profile whenever actor is ready and user is email-authed
   const {
     data: profile,
@@ -74,11 +103,42 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   } = useQuery<UserProfile | null>({
     queryKey: ["customer-profile"],
     queryFn: async () => {
-      if (!actor) return null;
-      return actor.getCallerUserProfile();
+      if (!customerActor) return null;
+      return customerActor.getCallerUserProfile();
     },
-    enabled: isEmailAuthed && !!actor && !actorLoading,
+    enabled: isEmailAuthed && !!customerActor,
     staleTime: 60_000,
+  });
+
+  const { mutateAsync: loginMutate } = useMutation({
+    mutationFn: async ({
+      email,
+      passwordHash,
+    }: {
+      email: string;
+      passwordHash: string;
+    }) => {
+      if (!customerActor) throw new Error("Not connected");
+      return customerActor.loginCustomer(email, passwordHash);
+    },
+  });
+
+  const { mutateAsync: registerMutate } = useMutation({
+    mutationFn: async ({
+      name,
+      email,
+      mobile,
+      passwordHash,
+    }: {
+      name: string;
+      email: string;
+      mobile: string;
+      passwordHash: string;
+    }) => {
+      if (!customerActor) throw new Error("Not connected");
+      await customerActor.registerCustomer(name, email, mobile, passwordHash);
+      return customerActor.loginCustomer(email, passwordHash);
+    },
   });
 
   const login = useCallback(
@@ -86,10 +146,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string,
     ): Promise<{ success: boolean; error?: string }> => {
-      if (!actor) return { success: false, error: "Not connected" };
+      if (!customerActor) return { success: false, error: "Not connected" };
 
       try {
-        const success = await actor.loginCustomer(email, password);
+        const passwordHash = await hashPassword(password);
+        const success = await loginMutate({ email, passwordHash });
         if (success) {
           setIsEmailAuthed(true);
           await queryClient.invalidateQueries({
@@ -102,7 +163,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: "Login failed. Please try again." };
       }
     },
-    [actor, queryClient],
+    [customerActor, loginMutate, queryClient],
   );
 
   const register = useCallback(
@@ -112,12 +173,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       mobile: string,
       password: string,
     ): Promise<{ success: boolean; error?: string }> => {
-      if (!actor) return { success: false, error: "Not connected" };
+      if (!customerActor) return { success: false, error: "Not connected" };
 
       try {
-        await actor.registerCustomer(name, email, mobile, password);
-        // After registering, log in automatically
-        const loginSuccess = await actor.loginCustomer(email, password);
+        const passwordHash = await hashPassword(password);
+        const loginSuccess = await registerMutate({
+          name,
+          email,
+          mobile,
+          passwordHash,
+        });
         if (loginSuccess) {
           setIsEmailAuthed(true);
           await queryClient.invalidateQueries({
@@ -136,7 +201,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [actor, queryClient],
+    [customerActor, registerMutate, queryClient],
   );
 
   const logout = useCallback(() => {
@@ -153,6 +218,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         profile: profile ?? null,
         isLoadingProfile,
+        customerActor: customerActor ?? null,
         login,
         register,
         logout,
